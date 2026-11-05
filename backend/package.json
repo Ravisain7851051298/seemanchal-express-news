@@ -1,0 +1,37 @@
+{
+  "name": "seemanchal-express-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Seemanchal Express News Portal & Management System",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "db:check": "node src/scripts/check-mysql.js"
+  },
+  "keywords": [
+    "news",
+    "seemanchal-express",
+    "cms",
+    "management"
+  ],
+  "author": "Seemanchal Express",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.1",
+    "multer": "^2.1.1",
+    "nodemailer": "^10.3.1",
+    "mysql2": "^3.14.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}
