@@ -20,8 +20,10 @@ import {
   Award,
   Sparkles,
   ExternalLink,
+  Video,
 } from 'lucide-react';
 import api from '../lib/api';
+import getMediaUrl from '../lib/imageHelper';
 
 export default function HomePage() {
   const [featuredNews, setFeaturedNews] = useState([]);
@@ -222,9 +224,13 @@ export default function HomePage() {
                 <div className="relative h-72 sm:h-96 w-full overflow-hidden bg-slate-900">
                   <img
                     key={heroNews._id || heroNews.slug}
-                    src={heroNews.thumbnail}
+                    src={getMediaUrl(heroNews.thumbnail, 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1200&auto=format&fit=crop&q=80')}
                     alt={heroNews.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-all duration-700"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = '/logo.jpeg';
+                    }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent"></div>
 
@@ -480,9 +486,13 @@ export default function HomePage() {
               >
                 <div className="relative h-44 w-full bg-slate-100 overflow-hidden">
                   <img
-                    src={item.thumbnail || 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&auto=format&fit=crop&q=80'}
+                    src={getMediaUrl(item.thumbnail, 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&auto=format&fit=crop&q=80')}
                     alt={item.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = '/logo.jpeg';
+                    }}
                   />
                   <span className="absolute bottom-2 left-2 bg-slate-900/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded">
                     {item.location || 'Seemanchal'}
@@ -561,9 +571,13 @@ export default function HomePage() {
             >
               <div className="relative h-48 w-full bg-slate-800 overflow-hidden">
                 <img
-                  src={item.thumbnail || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=600&auto=format&fit=crop&q=80'}
+                  src={getMediaUrl(item.thumbnail, 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=600&auto=format&fit=crop&q=80')}
                   alt={item.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = '/logo.jpeg';
+                  }}
                 />
                 <div className="absolute inset-0 bg-slate-950/40 group-hover:bg-slate-950/20 transition-colors flex items-center justify-center">
                   <div className="w-12 h-12 rounded-full bg-red-600/90 text-white flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
@@ -612,9 +626,13 @@ export default function HomePage() {
               >
                 <div className="sm:w-48 h-36 rounded-md overflow-hidden bg-slate-100 shrink-0">
                   <img
-                    src={news.thumbnail || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=500&auto=format&fit=crop&q=80'}
+                    src={getMediaUrl(news.thumbnail, 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=500&auto=format&fit=crop&q=80')}
                     alt={news.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = '/logo.jpeg';
+                    }}
                   />
                 </div>
                 <div className="flex flex-col justify-between flex-grow">

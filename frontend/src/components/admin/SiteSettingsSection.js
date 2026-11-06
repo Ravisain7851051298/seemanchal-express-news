@@ -34,6 +34,7 @@ export default function SiteSettingsSection() {
   // Upload progress states
   const [sealUploading, setSealUploading] = useState(false);
   const [sigUploading, setSigUploading] = useState(false);
+  const [watermarkUploading, setWatermarkUploading] = useState(false);
 
   // Form State
   const [settings, setSettings] = useState({
@@ -42,6 +43,7 @@ export default function SiteSettingsSection() {
     credentials: {
       officialSeal: '',
       presidentSignature: '',
+      watermarkLogo: '',
       signatoryName: 'Nation Correspondence / Chief Editor',
       signatoryDesignation: 'Editor-in-Chief & Central Secretariat',
     },
@@ -90,6 +92,7 @@ export default function SiteSettingsSection() {
           credentials: {
             officialSeal: s.credentials?.officialSeal || '',
             presidentSignature: s.credentials?.presidentSignature || '',
+            watermarkLogo: s.credentials?.watermarkLogo || '',
             signatoryName: s.credentials?.signatoryName || 'Nation Correspondence / Chief Editor',
             signatoryDesignation: s.credentials?.signatoryDesignation || 'Editor-in-Chief & Central Secretariat',
           },
@@ -194,6 +197,40 @@ export default function SiteSettingsSection() {
       setSaveError(err.response?.data?.message || 'Error uploading signature image');
     } finally {
       setSigUploading(false);
+    }
+  };
+
+  // Upload Watermark Logo File
+  const handleWatermarkUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const uploadData = new FormData();
+    uploadData.append('file', file);
+    setWatermarkUploading(true);
+    setSaveError('');
+    setSaveSuccess('');
+
+    try {
+      const res = await api.post('/upload', uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data?.success) {
+        setSettings((prev) => ({
+          ...prev,
+          credentials: {
+            ...prev.credentials,
+            watermarkLogo: res.data.fileUrl,
+          },
+        }));
+        setSaveSuccess('Watermark logo uploaded! Click "Save Settings" below to apply.');
+      } else {
+        setSaveError(res.data?.message || 'Failed to upload watermark');
+      }
+    } catch (err) {
+      setSaveError(err.response?.data?.message || 'Error uploading watermark');
+    } finally {
+      setWatermarkUploading(false);
     }
   };
 
@@ -453,6 +490,71 @@ export default function SiteSettingsSection() {
 
                   <p className="text-[11px] text-slate-400 leading-relaxed">
                     Will be rendered above &ldquo;Authorized Signatory&rdquo; on all ID cards and formal letters.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Official Watermark Logo / Stamp */}
+            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-sky-500"></span>
+                    <span>Official Watermark Logo (वाटरमार्क लोगो / स्टाम्प)</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Watermark logo to be placed cleanly at the top of media (images & video player). Transparent PNG recommended.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-5">
+                {/* Watermark Preview Box */}
+                <div className="w-40 h-24 rounded-xl border-2 border-dashed border-sky-500/50 bg-slate-950 p-2 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+                  {settings.credentials.watermarkLogo ? (
+                    <img
+                      src={getMediaUrl(settings.credentials.watermarkLogo)}
+                      alt="Watermark Logo"
+                      className="max-h-full max-w-full object-contain drop-shadow"
+                    />
+                  ) : (
+                    <div className="text-center text-[10px] text-slate-500 font-bold">
+                      Default Text Emblem
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-3 text-center sm:text-left">
+                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold cursor-pointer border border-slate-700 shadow-sm transition-colors">
+                    <Upload className="w-3.5 h-3.5 text-sky-400" />
+                    <span>{watermarkUploading ? 'Uploading Watermark...' : 'Upload Watermark Logo'}</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      onChange={handleWatermarkUpload}
+                      className="hidden"
+                      disabled={watermarkUploading}
+                    />
+                  </label>
+
+                  {settings.credentials.watermarkLogo && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          credentials: { ...prev.credentials, watermarkLogo: '' },
+                        }))
+                      }
+                      className="ml-2 text-[11px] text-red-400 hover:text-red-300 underline"
+                    >
+                      Remove Watermark Logo
+                    </button>
+                  )}
+
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Will be applied cleanly at the top-right of official photographs and broadcast video player.
                   </p>
                 </div>
               </div>

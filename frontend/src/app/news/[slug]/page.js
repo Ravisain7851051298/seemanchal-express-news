@@ -28,14 +28,22 @@ export default function SingleNewsPage() {
   const [relatedNews, setRelatedNews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAuthorOpen, setIsAuthorOpen] = useState(false);
+  const [watermarkLogo, setWatermarkLogo] = useState('');
 
   useEffect(() => {
     const fetchArticle = async () => {
       try {
-        const res = await api.get(`/news/${slug}`);
-        if (res.data.success) {
-          setNews(res.data.news);
-          setRelatedNews(res.data.relatedNews || []);
+        const [newsRes, settingsRes] = await Promise.allSettled([
+          api.get(`/news/${slug}`),
+          api.get('/settings'),
+        ]);
+
+        if (newsRes.status === 'fulfilled' && newsRes.value.data?.success) {
+          setNews(newsRes.value.data.news);
+          setRelatedNews(newsRes.value.data.relatedNews || []);
+        }
+        if (settingsRes.status === 'fulfilled' && settingsRes.value.data?.settings) {
+          setWatermarkLogo(settingsRes.value.data.settings.credentials?.watermarkLogo || '');
         }
       } catch (err) {
         console.error('Failed to load article:', err);
@@ -78,18 +86,24 @@ export default function SingleNewsPage() {
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-4">
           <Link href="/" className="hover:text-red-600">Home</Link>
           <ChevronRight className="w-3.5 h-3.5" />
-          {Array.isArray(news.categories) && news.categories.length > 0 ? (
-            news.categories.map((c, idx) => (
-              <span key={c._id || idx} className="flex items-center gap-2">
-                <Link href={`/category/${c.slug}`} className="hover:text-red-600 font-semibold">
-                  {c.name || c.nameHindi}
-                </Link>
-                {idx < news.categories.length - 1 && <span className="text-slate-400">/</span>}
-              </span>
-            ))
+          {Array.isArray(news.categories) && news.categories.filter((c) => c && (c.name || c.nameHindi || typeof c === 'object')).length > 0 ? (
+            news.categories
+              .filter((c) => c && (c.name || c.nameHindi || typeof c === 'object'))
+              .map((c, idx) => {
+                const label = c.name || c.nameHindi || news.categoryName || 'News';
+                const slugUrl = c.slug || 'all';
+                return (
+                  <span key={c._id || idx} className="flex items-center gap-2">
+                    <Link href={`/category/${slugUrl}`} className="hover:text-red-600 font-semibold">
+                      {label}
+                    </Link>
+                    {idx < news.categories.length - 1 && <span className="text-slate-400">/</span>}
+                  </span>
+                );
+              })
           ) : (
             <Link href={`/category/${news.category?.slug || 'all'}`} className="hover:text-red-600 font-semibold">
-              {news.categoryName || 'News'}
+              {news.category?.name || news.categoryName || 'News'}
             </Link>
           )}
           <ChevronRight className="w-3.5 h-3.5" />
@@ -100,22 +114,28 @@ export default function SingleNewsPage() {
         <article className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden p-3 sm:p-4 mb-3">
           {/* Category & Location Badges */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            {Array.isArray(news.categories) && news.categories.length > 0 ? (
-              news.categories.map((c, idx) => (
-                <Link
-                  key={c._id || idx}
-                  href={`/category/${c.slug}`}
-                  className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1 rounded uppercase tracking-wider transition-colors shadow-sm"
-                >
-                  {c.name || c.nameHindi}
-                </Link>
-              ))
+            {Array.isArray(news.categories) && news.categories.filter((c) => c && (c.name || c.nameHindi || typeof c === 'object')).length > 0 ? (
+              news.categories
+                .filter((c) => c && (c.name || c.nameHindi || typeof c === 'object'))
+                .map((c, idx) => {
+                  const label = c.name || c.nameHindi || news.categoryName || 'News';
+                  const slugUrl = c.slug || 'all';
+                  return (
+                    <Link
+                      key={c._id || idx}
+                      href={`/category/${slugUrl}`}
+                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1 rounded uppercase tracking-wider transition-colors shadow-sm"
+                    >
+                      {label}
+                    </Link>
+                  );
+                })
             ) : (
               <Link
                 href={`/category/${news.category?.slug || 'all'}`}
                 className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1 rounded uppercase tracking-wider transition-colors shadow-sm"
               >
-                {news.categoryName || 'Special'}
+                {news.category?.name || news.categoryName || 'Special'}
               </Link>
             )}
             <span className="bg-slate-100 text-slate-700 text-xs font-semibold px-2.5 py-1 rounded flex items-center gap-1 border border-slate-200">
@@ -178,19 +198,8 @@ export default function SingleNewsPage() {
             </div>
           </div>
 
-          {/* Featured Image */}
-          {news.thumbnail && !news.videoUrl && (
-            <div className="rounded-xl overflow-hidden mb-8 border border-slate-200">
-              <img
-                src={getMediaUrl(news.thumbnail, 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1200&auto=format&fit=crop&q=80')}
-                alt={news.title}
-                className="w-full max-h-[500px] object-cover"
-              />
-            </div>
-          )}
-
-          {/* Video Player if videoUrl exists */}
-          {news.videoUrl && (
+          {/* Main Media: Video Player or Featured Cover Image */}
+          {news.videoUrl ? (
             <div className="rounded-xl overflow-hidden mb-8 border border-slate-200 bg-black aspect-video relative shadow-lg">
               {news.videoUrl.includes('youtube.com') || news.videoUrl.includes('youtu.be') ? (
                 <iframe
@@ -216,10 +225,24 @@ export default function SingleNewsPage() {
                   Your browser does not support HTML5 video.
                 </video>
               )}
-              {/* Official News Watermark Badge on Video (if enabled) */}
-              {(news.watermarkVideo || news.hasWatermark) && <VideoWatermarkBadge />}
+              {/* Official News Watermark Badge on Video on TOP RIGHT (if enabled) */}
+              {(news.watermarkVideo || news.hasWatermark) && (
+                <VideoWatermarkBadge className="top-3 right-3" watermarkLogo={watermarkLogo} />
+              )}
             </div>
-          )}
+          ) : news.thumbnail ? (
+            <div className="rounded-xl overflow-hidden mb-8 border border-slate-200 bg-slate-100 relative shadow-sm max-h-[500px]">
+              <img
+                src={getMediaUrl(news.thumbnail)}
+                alt={news.title}
+                className="w-full h-full object-cover max-h-[500px]"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = '/logo.jpeg';
+                }}
+              />
+            </div>
+          ) : null}
 
           {/* Article Body Content (Markdown Supported) */}
           <div className="mb-8">
@@ -359,7 +382,7 @@ export default function SingleNewsPage() {
                 >
                   <div className="h-32 bg-slate-200 overflow-hidden">
                     <img
-                      src={rel.thumbnail || '/uploads/default-news.jpg'}
+                      src={getMediaUrl(rel.thumbnail, '/logo.jpeg')}
                       alt={rel.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />

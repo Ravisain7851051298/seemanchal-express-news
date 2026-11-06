@@ -9,8 +9,10 @@ import {
   MapPin,
   Eye,
   ChevronRight,
+  Video,
 } from 'lucide-react';
 import api from '../../../lib/api';
+import getMediaUrl from '../../../lib/imageHelper';
 
 export default function CategoryPage() {
   const params = useParams();
@@ -78,21 +80,49 @@ export default function CategoryPage() {
           </div>
         ) : newsList.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {newsList.map((item, idx) => (
-              <article
-                key={idx}
-                className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow group flex flex-col"
-              >
-                <div className="relative h-48 w-full bg-slate-100 overflow-hidden">
-                  <img
-                    src={item.thumbnail || '/uploads/default-news.jpg'}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <span className="absolute bottom-2 left-2 bg-slate-900/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded">
-                    {item.location || 'Seemanchal'}
-                  </span>
-                </div>
+            {newsList.map((item, idx) => {
+              let previewImg = '';
+              if (item.thumbnail) {
+                previewImg = getMediaUrl(item.thumbnail);
+              } else if (item.videoUrl) {
+                if (item.videoUrl.includes('youtu.be/')) {
+                  const id = item.videoUrl.split('youtu.be/')[1]?.split('?')[0];
+                  if (id) previewImg = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+                } else if (item.videoUrl.includes('watch?v=')) {
+                  const id = item.videoUrl.split('watch?v=')[1]?.split('&')[0];
+                  if (id) previewImg = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+                } else if (item.videoUrl.includes('embed/')) {
+                  const id = item.videoUrl.split('embed/')[1]?.split('?')[0];
+                  if (id) previewImg = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+                }
+              }
+              if (!previewImg) previewImg = '/logo.jpeg';
+
+              return (
+                <article
+                  key={item._id || idx}
+                  className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow group flex flex-col"
+                >
+                  <div className="relative h-48 w-full bg-slate-100 overflow-hidden">
+                    <img
+                      src={previewImg}
+                      alt={item.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = '/logo.jpeg';
+                      }}
+                    />
+                    {item.videoUrl && (
+                      <div className="absolute top-2 right-2 bg-red-600/90 text-white px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shadow">
+                        <Video className="w-3 h-3" />
+                        <span>Video</span>
+                      </div>
+                    )}
+                    <span className="absolute bottom-2 left-2 bg-slate-900/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded">
+                      {item.location || 'Seemanchal'}
+                    </span>
+                  </div>
                 <div className="p-5 flex flex-col flex-grow">
                   <div className="flex flex-wrap gap-1 mb-1.5">
                     {Array.isArray(item.categories) && item.categories.length > 0 ? (
@@ -131,8 +161,9 @@ export default function CategoryPage() {
                   </div>
                 </div>
               </article>
-            ))}
-          </div>
+            );
+          })}
+        </div>
         ) : (
           <div className="bg-white rounded-xl p-12 text-center border border-slate-200">
             <p className="text-base font-medium text-slate-700">No stories available in this category currently.</p>

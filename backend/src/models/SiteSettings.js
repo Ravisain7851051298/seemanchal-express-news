@@ -22,6 +22,10 @@ const siteSettingsSchema = new mongoose.Schema(
         type: String,
         default: '', // Image URL for Nation Correspondence / Chief Editor signature
       },
+      watermarkLogo: {
+        type: String,
+        default: '', // Image URL for official watermark badge / stamp
+      },
       signatoryName: {
         type: String,
         default: 'Nation Correspondence / Chief Editor',

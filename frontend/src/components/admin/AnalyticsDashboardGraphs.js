@@ -46,7 +46,7 @@ export default function AnalyticsDashboardGraphs({
     totalComplaints > 0 ? Math.round((resolvedComplaints / totalComplaints) * 100) : 100;
 
   // 1. Process Publication & Views Trend Points for SVG Curve
-  const rawTrends = stats.publicationTrends && stats.publicationTrends.length > 0
+  const rawTrends = (stats.publicationTrends && stats.publicationTrends.length > 0
     ? stats.publicationTrends
     : [
       { _id: 'Day 1', stories: 2, views: 120 },
@@ -56,7 +56,16 @@ export default function AnalyticsDashboardGraphs({
       { _id: 'Day 5', stories: 5, views: 490 },
       { _id: 'Day 6', stories: 8, views: 820 },
       { _id: 'Day 7', stories: 7, views: 950 },
-    ];
+    ]).map((t, idx) => ({
+      ...t,
+      _id: typeof t._id === 'string'
+        ? t._id
+        : (t._id && typeof t._id === 'object' && t._id.$dateToString)
+        ? String(t._id.$dateToString)
+        : t._id != null
+        ? String(t._id)
+        : `Day ${idx + 1}`
+    }));
 
   const maxViewsInTrend = Math.max(...rawTrends.map((t) => t.views || 0), 100);
   const maxStoriesInTrend = Math.max(...rawTrends.map((t) => t.stories || 0), 5);
@@ -64,7 +73,7 @@ export default function AnalyticsDashboardGraphs({
   // 2. Category Distribution computation
   let categoryDistribution = stats.categoryStats && stats.categoryStats.length > 0
     ? stats.categoryStats.map((c) => ({
-      name: c._id || 'Unassigned',
+      name: typeof c._id === 'object' && c._id !== null ? (c._id.name || JSON.stringify(c._id)) : (c._id || 'Unassigned'),
       count: c.count,
       views: c.views || 0,
     }))
@@ -379,7 +388,11 @@ export default function AnalyticsDashboardGraphs({
                     fontWeight="600"
                     textAnchor="middle"
                   >
-                    {pt._id ? pt._id.slice(-5) : `D${i + 1}`}
+                    {typeof pt._id === 'string'
+                      ? (pt._id.length >= 5 ? pt._id.slice(-5) : pt._id)
+                      : pt._id != null
+                      ? String(pt._id)
+                      : `D${i + 1}`}
                   </text>
                 </g>
               ))}
@@ -389,7 +402,9 @@ export default function AnalyticsDashboardGraphs({
             {hoveredPoint && (
               <div className="absolute top-4 right-4 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs shadow-xl animate-fade-in pointer-events-none">
                 <span className="font-bold text-white block">
-                  Date: {hoveredPoint.data._id}
+                  Date: {typeof hoveredPoint.data._id === 'object' && hoveredPoint.data._id !== null
+                    ? JSON.stringify(hoveredPoint.data._id)
+                    : String(hoveredPoint.data._id || `Day ${hoveredPoint.idx + 1}`)}
                 </span>
                 <span className="text-sky-400 font-semibold block">
                   Reads: {hoveredPoint.data.views || 0} views
@@ -647,7 +662,7 @@ export default function AnalyticsDashboardGraphs({
                     key={idx}
                     className="text-[10px] px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300 font-mono"
                   >
-                    {g._id || 'General'}: {g.count}
+                    {typeof g._id === 'object' && g._id !== null ? JSON.stringify(g._id) : (g._id || 'General')}: {g.count}
                   </span>
                 ))}
               </div>

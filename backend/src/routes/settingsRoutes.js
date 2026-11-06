@@ -37,13 +37,15 @@ router.put('/', protect, authorize('admin'), async (req, res) => {
 
     let settings = await SiteSettings.getSettings();
 
+    const toPlain = (v) => (v && typeof v.toObject === 'function' ? v.toObject() : v || {});
+
     if (organizationName !== undefined) settings.organizationName = organizationName;
     if (tagline !== undefined) settings.tagline = tagline;
 
     // Update credentials (official seal, president signature, etc.)
     if (credentials) {
       settings.credentials = {
-        ...settings.credentials.toObject(),
+        ...toPlain(settings.credentials),
         ...credentials,
       };
     }
@@ -51,7 +53,7 @@ router.put('/', protect, authorize('admin'), async (req, res) => {
     // Update social media links
     if (socialLinks) {
       settings.socialLinks = {
-        ...settings.socialLinks.toObject(),
+        ...toPlain(settings.socialLinks),
         ...socialLinks,
       };
     }
@@ -59,7 +61,7 @@ router.put('/', protect, authorize('admin'), async (req, res) => {
     // Update About Us content
     if (aboutUs) {
       settings.aboutUs = {
-        ...settings.aboutUs.toObject(),
+        ...toPlain(settings.aboutUs),
         ...aboutUs,
       };
     }
@@ -67,7 +69,7 @@ router.put('/', protect, authorize('admin'), async (req, res) => {
     // Update Contact Us content
     if (contactUs) {
       settings.contactUs = {
-        ...settings.contactUs.toObject(),
+        ...toPlain(settings.contactUs),
         ...contactUs,
       };
     }
@@ -79,11 +81,14 @@ router.put('/', protect, authorize('admin'), async (req, res) => {
     try {
       await AdminActivityLog.create({
         action: 'UPDATE_SETTINGS',
+        module: 'settings',
         adminId: req.user._id,
         adminName: req.user.name,
-        targetType: 'SYSTEM',
+        adminEmail: req.user.email || '',
+        targetId: String(settings._id),
+        targetModel: 'SiteSettings',
         details: 'Updated site configuration, institutional credentials, and page content',
-        ipAddress: req.ip,
+        ipAddress: req.ip || '',
       });
     } catch (logErr) {
       console.warn('Failed to record activity log:', logErr.message);

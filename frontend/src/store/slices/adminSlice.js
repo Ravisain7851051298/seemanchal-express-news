@@ -78,9 +78,14 @@ const adminSlice = createSlice({
       state.loading = false;
     },
     updateNewsItem: (state, action) => {
-      const idx = state.newsList.findIndex((n) => n._id === action.payload._id);
+      const targetId = action.payload?._id || action.payload?.id;
+      const idx = state.newsList.findIndex((n) => (n._id || n.id) === targetId);
       if (idx !== -1) {
-        state.newsList[idx] = action.payload;
+        state.newsList[idx] = {
+          ...state.newsList[idx],
+          ...action.payload,
+          author: action.payload.author || state.newsList[idx].author,
+        };
       }
     },
     removeNewsItem: (state, action) => {

@@ -370,7 +370,8 @@ router.post('/', protect, authorize('admin', 'reporter'), async (req, res) => {
           message: 'Access Denied: Your reporter account is suspended. You cannot submit news articles.',
         });
       }
-      if (req.user.status === 'pending' || req.user.reporterStatus === 'pending') {
+      const isApproved = req.user.status === 'approved' || req.user.reporterStatus === 'active';
+      if (!isApproved && (req.user.status === 'pending' || req.user.reporterStatus === 'pending')) {
         return res.status(403).json({
           success: false,
           isPending: true,

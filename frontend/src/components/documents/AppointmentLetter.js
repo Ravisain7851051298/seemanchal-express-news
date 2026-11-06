@@ -60,22 +60,19 @@ export default function AppointmentLetter({ appointmentData, onPrint }) {
       <div className="print-area w-full max-w-3xl bg-white rounded-xl border border-slate-300 shadow-xl p-8 sm:p-12 text-slate-800 font-serif leading-relaxed my-4 relative">
         {/* Letterhead Top Header */}
         <div className="border-b-4 border-red-700 pb-5 mb-6 text-center">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-center gap-4 mb-2">
             <img
               src="/logo.jpeg"
               alt="Seemanchal Express"
               className="w-14 h-14 rounded-lg bg-white object-contain border border-slate-200 shadow p-1"
             />
-            <div>
+            <div className="text-left">
               <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-sans">
                 SEEMANCHAL EXPRESS
               </h1>
               <p className="text-sm font-bold text-red-700 font-sans tracking-wide">
                 Voice of the People | Fearless Journalism
               </p>
-            </div>
-            <div className="w-14 h-14 rounded-full border-2 border-slate-300 flex items-center justify-center text-[10px] text-slate-400 font-sans font-bold">
-              OFFICIAL
             </div>
           </div>
 

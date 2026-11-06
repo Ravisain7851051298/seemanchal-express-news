@@ -2,6 +2,39 @@ const mysql = require('mysql2/promise');
 const crypto = require('crypto');
 let pool;
 const registry = new Map();
+const tableIdInfo = new Map();
+const tableColumns = new Map();
+
+async function getTableColumns(table) {
+  if (tableColumns.has(table)) return tableColumns.get(table);
+  try {
+    const [cols] = await getPool().query(`SHOW COLUMNS FROM ${sqlName(table)}`);
+    if (cols && cols.length) {
+      const set = new Set(cols.map((c) => c.Field.toLowerCase()));
+      tableColumns.set(table, set);
+      return set;
+    }
+  } catch { }
+  return new Set();
+}
+
+async function getTableIdInfo(table) {
+  if (tableIdInfo.has(table)) return tableIdInfo.get(table);
+  try {
+    const [cols] = await getPool().query(`SHOW COLUMNS FROM ${sqlName(table)} LIKE '_id'`);
+    if (cols && cols.length) {
+      const extra = String(cols[0].Extra || '').toLowerCase();
+      const type = String(cols[0].Type || '').toLowerCase();
+      const info = {
+        isAutoIncrement: extra.includes('auto_increment'),
+        isVarchar: type.includes('varchar') || type.includes('char'),
+      };
+      tableIdInfo.set(table, info);
+      return info;
+    }
+  } catch { }
+  return { isAutoIncrement: false, isVarchar: true };
+}
 
 const isValidId = (v) => {
   const s = String(v ?? '').trim();
@@ -119,7 +152,14 @@ function analyzeFields(def, prefix = '') {
         kind: array ? 'json' : nested ? 'json' : t === ObjectId || t?.name === 'ObjectId' ? 'id' : t === String ? 'string' : t === Number ? 'number' : t === Boolean ? 'boolean' : t === Date ? 'date' : 'json',
       });
     } else if (Array.isArray(val)) {
-      fields.push({ name, key, def: { type: Array, default: [] }, kind: 'json' });
+      const itemDef = val[0] || {};
+      const ref = itemDef?.ref || (isDescriptor(itemDef) ? itemDef.ref : undefined);
+      fields.push({
+        name,
+        key,
+        def: { type: Array, default: [], ref },
+        kind: 'json',
+      });
     } else if (val && typeof val === 'object') {
       const defaults = nestedDefaults(val);
       fields.push({ name, key, def: { type: Object, ...(defaults !== undefined ? { default: defaults } : {}) }, kind: 'json' });
@@ -144,6 +184,7 @@ function sqlName(name) {
 }
 
 function modelTable(name) {
+  const simple = name.toLowerCase();
   const raw = name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
   const overrides = {
     category: 'categories',
@@ -170,8 +211,18 @@ function modelTable(name) {
     program: 'programs',
     service: 'services',
     blog: 'blogs',
+    legaldocument: 'legaldocuments',
+    legal_document: 'legaldocuments',
+    legaldocumentacceptance: 'legaldocumentacceptances',
+    legal_document_acceptance: 'legaldocumentacceptances',
+    legaldocumentversion: 'legaldocumentversions',
+    legal_document_version: 'legaldocumentversions',
+    sitesettings: 'sitesettings',
+    site_settings: 'sitesettings',
+    adminactivitylog: 'adminactivitylogs',
+    admin_activity_log: 'adminactivitylogs',
   };
-  return overrides[raw] || (raw.endsWith('s') ? raw : raw + 's');
+  return overrides[simple] || overrides[raw] || (raw.endsWith('s') ? raw : raw + 's');
 }
 
 function getDefault(field) {
@@ -186,6 +237,10 @@ function getDefault(field) {
 
 function normalizeRow(Model, row, isUpdate = false) {
   const out = {};
+  if (row._id != null && String(row._id).trim() !== '') {
+    out._id = String(row._id);
+    out.id = String(row._id);
+  }
   for (const f of Model._fields) {
     let v = pathGet(row, f.name);
     if (v === undefined && !isUpdate) v = getDefault(f);
@@ -227,7 +282,7 @@ function decodeRow(Model, row) {
     if (f.kind === 'json' && typeof v === 'string') {
       try {
         v = JSON.parse(v);
-      } catch {}
+      } catch { }
     }
     if (f.kind === 'boolean' && v !== null) v = !!v;
     if (f.kind === 'date' && v !== null) v = new Date(v);
@@ -235,6 +290,7 @@ function decodeRow(Model, row) {
     pathSet(out, f.name, v);
   }
   out._id = String(row._id);
+  out.id = String(row._id);
   if (Model._timestamps) {
     const ts = Model._timestampOptions || { createdAt: true, updatedAt: true };
     if (ts.createdAt !== false) out.createdAt = row.createdAt;
@@ -352,24 +408,36 @@ class ModelInstance {
   async populate(path, fields) {
     const M = this.$model;
     const f = M._fields.find((x) => x.name === path);
-    const ref = f?.def?.ref;
+    let ref = f?.def?.ref;
+    if (!ref && Array.isArray(f?.def?.type) && f.def.type[0]?.ref) {
+      ref = f.def.type[0].ref;
+    }
     const Related = registry.get(ref);
     const val = pathGet(this, path);
     if (Related && val != null) {
       const isArray = Array.isArray(val);
-      const relatedRows = isArray
-        ? await Related.find({ _id: { $in: val } })
-        : [await Related.findById(val)].filter(Boolean);
-      const byId = new Map(relatedRows.map((item) => [String(item._id), item.toObject()]));
-      const project = (r) => {
-        if (!r || !fields) return r;
-        const wanted = String(fields).split(/\\s+/).filter(Boolean).map((x) => x.replace(/^\\+/, ''));
-        if (!wanted.length) return r;
-        const picked = { _id: r._id };
-        for (const k of wanted) if (r[k] !== undefined) picked[k] = r[k];
-        return picked;
-      };
-      pathSet(this, path, isArray ? val.map((id) => project(byId.get(String(id)))).filter(Boolean) : project(byId.get(String(val))));
+      const rawIds = isArray ? val : [val];
+      const ids = rawIds
+        .map((x) => (x && typeof x === 'object' ? x._id || x.id : x))
+        .filter((x) => x != null && String(x).trim() !== '');
+
+      if (ids.length) {
+        const relatedRows = await Related.find({ _id: { $in: ids } });
+        const byId = new Map(relatedRows.map((item) => [String(item._id), item.toObject()]));
+        const project = (r) => {
+          if (!r || !fields) return r;
+          const wanted = String(fields).split(/\s+/).filter(Boolean).map((x) => x.replace(/^\+/, ''));
+          if (!wanted.length) return r;
+          const picked = { _id: r._id };
+          for (const k of wanted) if (r[k] !== undefined) picked[k] = r[k];
+          return picked;
+        };
+        const resolved = isArray
+          ? ids.map((id) => project(byId.get(String(id)))).filter(Boolean)
+          : project(byId.get(String(ids[0])));
+
+        pathSet(this, path, resolved);
+      }
     }
     return this;
   }
@@ -379,10 +447,11 @@ class ModelInstance {
       if (hook.event === 'save') await hook.fn.call(this);
     }
     const id = this._id;
-    const isUpdate = Boolean(id);
+    const isUpdate = Boolean(id && String(id).trim() !== '');
     const data = normalizeRow(M, this.toObject(), isUpdate);
-    if (id) {
-      const cols = Object.keys(data).filter((k) => k !== '_id');
+    const existingCols = await getTableColumns(M.table);
+    if (isUpdate) {
+      const cols = Object.keys(data).filter((k) => k !== '_id' && (existingCols.size === 0 || existingCols.has(k.toLowerCase())));
       if (cols.length) {
         await getPool().execute(
           `UPDATE ${sqlName(M.table)} SET ${cols.map((k) => `${sqlName(k)}=?`).join(',')} WHERE _id=?`,
@@ -390,22 +459,45 @@ class ModelInstance {
         );
       }
     } else {
-      const cols = Object.keys(data).filter((k) => k !== '_id');
+      const info = await getTableIdInfo(M.table);
+      const isAuto = info?.isAutoIncrement;
+      if (!isAuto && (!this._id || String(this._id).trim() === '')) {
+        this._id = new ObjectId().value;
+      }
+      if (this._id) {
+        data._id = String(this._id);
+      }
+      const cols = Object.keys(data).filter((k) => {
+        if (isAuto && k === '_id') return false;
+        if (data[k] === undefined) return false;
+        return existingCols.size === 0 || existingCols.has(k.toLowerCase());
+      });
       if (cols.length) {
         const [r] = await getPool().execute(
           `INSERT INTO ${sqlName(M.table)} (${cols.map(sqlName).join(',')}) VALUES (${cols.map(() => '?').join(',')})`,
           cols.map((k) => data[k])
         );
-        this._id = String(r.insertId);
+        if (isAuto && r.insertId) {
+          this._id = String(r.insertId);
+        }
       } else {
         const [r] = await getPool().execute(`INSERT INTO ${sqlName(M.table)} () VALUES ()`);
-        this._id = String(r.insertId);
+        if (isAuto && r.insertId) {
+          this._id = String(r.insertId);
+        }
       }
       this.createdAt = data.createdAt;
     }
     if (M._timestampOptions?.updatedAt !== false) this.updatedAt = data.updatedAt;
     this.$originalPassword = this.password;
     return this;
+  }
+  async deleteOne() {
+    const M = this.$model;
+    if (this._id) {
+      await getPool().execute(`DELETE FROM ${sqlName(M.table)} WHERE _id=?`, [String(this._id)]);
+    }
+    return { acknowledged: true, deletedCount: 1 };
   }
 }
 
@@ -538,7 +630,7 @@ class Query {
           const byId = new Map(relatedRows.map((item) => [String(item._id), item.toObject()]));
           const project = (r) => {
             if (!r || !pop.fields) return r;
-            const fields = String(pop.fields).split(/\\s+/).filter(Boolean);
+            const fields = String(pop.fields).split(/\s+/).filter(Boolean);
             const picked = { _id: r._id };
             for (const k of fields) if (r[k] !== undefined) picked[k] = r[k];
             return picked;
@@ -632,13 +724,31 @@ function evalExpr(expr, r) {
       }
       return pass ? evalExpr(thenVal, r) : evalExpr(elseVal, r);
     }
+    if (expr.$year) {
+      const raw = evalExpr(expr.$year, r);
+      if (raw == null) return null;
+      const d = raw instanceof Date ? raw : new Date(raw);
+      return Number.isNaN(d.getTime()) ? null : d.getUTCFullYear();
+    }
+    if (expr.$month) {
+      const raw = evalExpr(expr.$month, r);
+      if (raw == null) return null;
+      const d = raw instanceof Date ? raw : new Date(raw);
+      return Number.isNaN(d.getTime()) ? null : d.getUTCMonth() + 1;
+    }
+    if (expr.$dayOfMonth) {
+      const raw = evalExpr(expr.$dayOfMonth, r);
+      if (raw == null) return null;
+      const d = raw instanceof Date ? raw : new Date(raw);
+      return Number.isNaN(d.getTime()) ? null : d.getUTCDate();
+    }
   }
   return expr;
 }
 
 function model(name, schema) {
   if (registry.has(name)) return registry.get(name);
-  const M = class extends ModelInstance {};
+  const M = class extends ModelInstance { };
   M.modelName = name;
   M.table = modelTable(name);
   M._schema = schema;
@@ -781,17 +891,14 @@ function model(name, schema) {
           let key;
           if (spec._id === null) {
             key = null;
-          } else if (spec._id?.$ifNull) {
-            const fieldVal = pathGet(r, spec._id.$ifNull[0].slice(1));
-            key = fieldVal !== undefined && fieldVal !== null && fieldVal !== '' ? fieldVal : spec._id.$ifNull[1];
+          } else if (spec._id && typeof spec._id === 'object' && Object.keys(spec._id).some((k) => k.startsWith('$'))) {
+            key = evalExpr(spec._id, r);
           } else if (typeof spec._id === 'string' && spec._id.startsWith('$')) {
             key = pathGet(r, spec._id.slice(1));
           } else if (spec._id && typeof spec._id === 'object') {
             key = {};
             for (const [k, v] of Object.entries(spec._id)) {
-              if (v?.$year) key[k] = new Date(pathGet(r, v.$year.slice(1))).getUTCFullYear();
-              else if (v?.$month) key[k] = new Date(pathGet(r, v.$month.slice(1))).getUTCMonth() + 1;
-              else key[k] = evalExpr(v, r);
+              key[k] = evalExpr(v, r);
             }
           } else {
             key = evalExpr(spec._id, r);
@@ -851,7 +958,7 @@ function model(name, schema) {
     }
     return rows;
   };
-  M.createIndexes = async () => {};
+  M.createIndexes = async () => { };
   registry.set(name, M);
   return M;
 }
@@ -861,7 +968,7 @@ const odm = {
   Types: Schema.Types,
   model,
   isValidObjectId: isValidId,
-  connection: { on() {} },
+  connection: { on() { } },
 };
 
 async function connect() {
@@ -941,6 +1048,68 @@ async function syncSchema() {
     await pool.query(
       `CREATE TABLE IF NOT EXISTS ${sqlName(M.table)} (${cols.join(',')}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
+
+    try {
+      const [existingCols] = await pool.query(`SHOW COLUMNS FROM ${sqlName(M.table)}`);
+      if (existingCols && existingCols.length) {
+        const existingColNames = new Set(existingCols.map((c) => c.Field.toLowerCase()));
+        tableColumns.set(M.table, existingColNames);
+
+        const idCol = existingCols.find((c) => c.Field === '_id');
+        if (idCol) {
+          const extra = String(idCol.Extra || '').toLowerCase();
+          const type = String(idCol.Type || '').toLowerCase();
+          tableIdInfo.set(M.table, {
+            isAutoIncrement: extra.includes('auto_increment'),
+            isVarchar: type.includes('varchar') || type.includes('char'),
+          });
+        }
+
+        // Add any missing columns from model fields to existing table
+        for (const f of M._fields) {
+          if (f.key === '_id') continue;
+          if (!existingColNames.has(f.key.toLowerCase())) {
+            try {
+              await pool.query(`ALTER TABLE ${sqlName(M.table)} ADD COLUMN ${sqlName(f.key)} ${sqlType(f)} NULL`);
+              console.log(`[MySQL ODM] Added missing column ${f.key} to table ${M.table}`);
+              existingColNames.add(f.key.toLowerCase());
+            } catch (colErr) {
+              console.warn(`[MySQL ODM] Failed adding column ${f.key} to ${M.table}:`, colErr.message);
+            }
+          }
+        }
+
+        // Timestamps check
+        if (M._timestamps) {
+          if (M._timestampOptions.createdAt && !existingColNames.has('createdat')) {
+            try {
+              await pool.query(`ALTER TABLE ${sqlName(M.table)} ADD COLUMN \`createdAt\` DATETIME(3) NULL`);
+              existingColNames.add('createdat');
+            } catch { }
+          }
+          if (M._timestampOptions.updatedAt && !existingColNames.has('updatedat')) {
+            try {
+              await pool.query(`ALTER TABLE ${sqlName(M.table)} ADD COLUMN \`updatedAt\` DATETIME(3) NULL`);
+              existingColNames.add('updatedat');
+            } catch { }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[MySQL ODM] Error syncing columns for ${M.table}:`, err.message);
+    }
+
+    // Auto-heal empty _id rows if any exist in tables
+    try {
+      const [emptyRows] = await pool.query(`SELECT _id FROM ${sqlName(M.table)} WHERE _id = ''`);
+      if (emptyRows && emptyRows.length > 0) {
+        for (let i = 0; i < emptyRows.length; i++) {
+          const generatedId = new ObjectId().value;
+          await pool.query(`UPDATE ${sqlName(M.table)} SET _id = ? WHERE _id = '' LIMIT 1`, [generatedId]);
+          console.log(`[MySQL ODM] Auto-repaired empty _id in table ${M.table} -> ${generatedId}`);
+        }
+      }
+    } catch { }
   }
 }
 

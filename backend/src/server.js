@@ -6,7 +6,7 @@ const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 
 // Load env
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const connectDB = require('./config/db');
 
@@ -28,7 +28,8 @@ const app = express();
 
 // Allowed origins for CORS with credentials
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'http://localhost:3000',
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
   'http://localhost:3002',
@@ -51,8 +52,16 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(morgan('dev'));
 
-// Static uploads directory
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Static uploads directory with CORS headers enabled for cross-origin media rendering
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '../uploads'), {
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  })
+);
 
 // Mount API routes
 app.use('/api/auth', authRoutes);

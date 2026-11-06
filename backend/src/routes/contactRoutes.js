@@ -54,4 +54,17 @@ router.put('/:id/status', protect, authorize('admin'), async (req, res) => {
   }
 });
 
+// @route   DELETE /api/contact/:id
+// @desc    Delete inquiry (Admin only)
+router.delete('/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const inquiry = await Inquiry.findById(req.params.id);
+    if (!inquiry) return res.status(404).json({ success: false, message: 'Inquiry not found' });
+    await inquiry.deleteOne();
+    res.json({ success: true, message: 'Inquiry deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

@@ -20,24 +20,21 @@ import {
   Video,
   Image as ImageIcon,
   ExternalLink,
-  Shield,
   User,
   Lock,
   RotateCcw,
   Menu,
   X,
-  ChevronRight,
   TrendingUp,
   AlertTriangle,
-  Printer,
   Search,
-  Filter,
   Camera,
   Edit3,
   Trash2,
   Upload,
   AlertCircle,
   Scale,
+  Heart,
 } from 'lucide-react';
 import useAuth from '../../hooks/useAuth';
 import {
@@ -140,6 +137,7 @@ export default function ReporterDashboard() {
   });
   const [profileLoading, setProfileLoading] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [watermarkLogo, setWatermarkLogo] = useState('');
 
   // Legal Policies & Compliance State
   const [legalStatus, setLegalStatus] = useState({
@@ -218,15 +216,16 @@ export default function ReporterDashboard() {
     dispatch(setReporterLoading(true));
 
     try {
-      const [subRes, catRes] = await Promise.allSettled([
+      const [subRes, catRes, settingsRes] = await Promise.allSettled([
         api.get('/news/reporter/my-submissions'),
         api.get('/categories'),
+        api.get('/settings'),
       ]);
 
-      if (subRes.status === 'fulfilled' && subRes.value.data.success) {
+      if (subRes.status === 'fulfilled' && subRes.value.data?.success) {
         dispatch(setMySubmissions(subRes.value.data.news));
       }
-      if (catRes.status === 'fulfilled' && catRes.value.data.success) {
+      if (catRes.status === 'fulfilled' && catRes.value.data?.success) {
         setCategories(catRes.value.data.categories);
         if (catRes.value.data.categories.length > 0) {
           setNewsForm((prev) => ({
@@ -234,6 +233,9 @@ export default function ReporterDashboard() {
             category: prev.category || catRes.value.data.categories[0]._id,
           }));
         }
+      }
+      if (settingsRes.status === 'fulfilled' && settingsRes.value.data?.settings) {
+        setWatermarkLogo(settingsRes.value.data.settings.credentials?.watermarkLogo || '');
       }
     } catch (err) {
       console.error('Reporter data load error:', err);
@@ -378,7 +380,7 @@ export default function ReporterDashboard() {
       let finalFile = file;
       const shouldWatermark = isEdit ? editReportForm.watermarkPhoto : newsForm.watermarkPhoto;
       if (shouldWatermark) {
-        finalFile = await applyWatermarkToImage(file);
+        finalFile = await applyWatermarkToImage(file, watermarkLogo);
       }
       const data = new FormData();
       data.append('file', finalFile);
@@ -1171,12 +1173,17 @@ export default function ReporterDashboard() {
                       className="p-3.5 bg-slate-800/60 rounded-xl border border-slate-700/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-16 h-12 rounded-lg bg-slate-700 overflow-hidden shrink-0">
+                        <div className="w-16 h-12 rounded-lg bg-slate-700 overflow-hidden shrink-0 relative">
                           <img
-                            src={story.thumbnail || '/uploads/default-news.jpg'}
+                            src={story.thumbnail ? getMediaUrl(story.thumbnail) : '/logo.jpeg'}
                             alt={story.title}
                             className="w-full h-full object-cover"
                           />
+                          {story.videoUrl && (
+                            <div className="absolute bottom-1 right-1 bg-red-600 text-white p-0.5 rounded shadow text-[8px]">
+                              <Video className="w-2.5 h-2.5" />
+                            </div>
+                          )}
                         </div>
                         <div>
                           <div className="flex flex-wrap gap-1">
@@ -1457,80 +1464,81 @@ export default function ReporterDashboard() {
                   />
                 </div>
 
-                {/* 2-Column Responsive Grid: Metadata & Media */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  {/* Left: Categories & Dateline & Tags */}
-                  <div className="space-y-4 bg-slate-950/50 p-4 rounded-xl border border-slate-800">
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="block font-bold text-slate-200">
-                          News Categories * <span className="text-xs font-normal text-amber-300">(Select 1 or more / 1 से अधिक श्रेणियां चुनें)</span>
-                        </label>
-                        <span className="text-xs text-slate-400 font-bold">
-                          {(newsForm.categories || []).length} selected
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 p-2 bg-slate-800/80 border border-slate-700 rounded-xl max-h-36 overflow-y-auto">
-                        {categories.map((c) => {
-                          const isSelected = (newsForm.categories || []).includes(c._id) || (newsForm.categories?.length === 0 && newsForm.category === c._id);
-                          return (
-                            <button
-                              key={c._id}
-                              type="button"
-                              onClick={() => {
-                                const current = (newsForm.categories && newsForm.categories.length > 0)
-                                  ? newsForm.categories
-                                  : (newsForm.category ? [newsForm.category] : []);
-                                let updated;
-                                if (current.includes(c._id)) {
-                                  updated = current.filter((id) => id !== c._id);
-                                } else {
-                                  updated = [...current, c._id];
-                                }
-                                setNewsForm({
-                                  ...newsForm,
-                                  categories: updated,
-                                  category: updated[0] || '',
-                                });
-                              }}
-                              className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${isSelected
-                                ? 'bg-amber-500 text-slate-950 font-bold shadow-sm ring-1 ring-amber-300'
-                                : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-700'
-                                }`}
-                            >
-                              <span className="text-[10px]">{isSelected ? '✓' : '+'}</span>
-                              <span>{c.name}</span>
-                              {c.nameHindi && <span className="text-[10px] opacity-75">({c.nameHindi})</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block font-bold text-slate-200 mb-1.5">
-                        Beat Dateline / Reporting Location *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={newsForm.location}
-                        onChange={(e) => setNewsForm({ ...newsForm, location: e.target.value })}
-                        placeholder="e.g. Bahadurganj, Kishanganj, Bihar"
-                        className="w-full px-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
+                {/* ROW 1: News Categories in Single Row */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block font-bold text-slate-200 text-xs sm:text-sm">
+                      News Categories * <span className="text-xs font-normal text-amber-300">(Select 1 or more / 1 से अधिक श्रेणियां चुनें)</span>
+                    </label>
+                    <span className="text-xs text-amber-400 font-bold bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-800/80">
+                      {(newsForm.categories || []).length} selected
+                    </span>
                   </div>
+                  <div className="flex flex-wrap gap-2 p-2 bg-slate-800/80 border border-slate-700 rounded-xl max-h-36 overflow-y-auto">
+                    {categories.map((c) => {
+                      const isSelected = (newsForm.categories || []).includes(c._id) || (newsForm.categories?.length === 0 && newsForm.category === c._id);
+                      return (
+                        <button
+                          key={c._id}
+                          type="button"
+                          onClick={() => {
+                            const current = (newsForm.categories && newsForm.categories.length > 0)
+                              ? newsForm.categories
+                              : (newsForm.category ? [newsForm.category] : []);
+                            let updated;
+                            if (current.includes(c._id)) {
+                              updated = current.filter((id) => id !== c._id);
+                            } else {
+                              updated = [...current, c._id];
+                            }
+                            setNewsForm({
+                              ...newsForm,
+                              categories: updated,
+                              category: updated[0] || '',
+                            });
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${isSelected
+                            ? 'bg-amber-500 text-slate-950 font-bold shadow-md ring-1 ring-amber-300 scale-[1.02]'
+                            : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-700 border border-slate-800'
+                            }`}
+                        >
+                          <span className="text-[11px] font-bold">{isSelected ? '✓' : '+'}</span>
+                          <span>{c.name}</span>
+                          {c.nameHindi && <span className="text-[10px] opacity-80">({c.nameHindi})</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                  {/* Right: Media Section */}
-                  <div className="space-y-4 bg-slate-950/50 p-4 rounded-xl border border-slate-800">
-                    {/* Featured Photograph */}
+                {/* ROW 2: Beat Dateline / Reporting Location Full Width */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                  <label className="block font-bold text-slate-200 mb-1.5 text-xs sm:text-sm">
+                    Beat Dateline / Reporting Location * <span className="text-xs font-normal text-slate-400">(e.g. Bahadurganj, Kishanganj, Bihar)</span>
+                  </label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 absolute left-3.5 top-3 text-red-500" />
+                    <input
+                      type="text"
+                      required
+                      value={newsForm.location}
+                      onChange={(e) => setNewsForm({ ...newsForm, location: e.target.value })}
+                      placeholder="e.g. Bahadurganj, Kishanganj, Bihar"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* ROW 3: Photo and Video Upload & Preview in 2 Columns */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Column 1: Featured Photograph */}
+                  <div className="space-y-3 bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
                     <div>
-                      <label className="font-bold text-slate-200 mb-1.5 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">
-                          <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-1.5">
+                          <ImageIcon className="w-4 h-4 text-amber-400" />
                           Featured Photograph
-                        </span>
+                        </label>
                         <div className="flex items-center gap-2">
                           {newsForm.thumbnail && (
                             <button
@@ -1543,9 +1551,9 @@ export default function ReporterDashboard() {
                               <span>Clear</span>
                             </button>
                           )}
-                          <label className="cursor-pointer text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                          <label className="cursor-pointer text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors">
                             <Upload className="w-3 h-3" />
-                            {uploadingImage ? 'Uploading...' : 'Upload File'}
+                            {uploadingImage ? 'Uploading...' : 'Upload Photo'}
                             <input
                               type="file"
                               accept="image/*"
@@ -1554,57 +1562,63 @@ export default function ReporterDashboard() {
                             />
                           </label>
                         </div>
-                      </label>
+                      </div>
+
                       <input
                         type="text"
                         value={newsForm.thumbnail}
                         onChange={(e) => setNewsForm({ ...newsForm, thumbnail: e.target.value })}
-                        placeholder="Upload file above or paste image URL..."
+                        placeholder="Upload photo above or paste image URL..."
                         className="w-full px-3.5 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono text-[11px]"
                       />
 
-                      {/* Large Photo Preview with Watermark & X Close Button */}
+                      {/* Photo Preview */}
                       {newsForm.thumbnail && (
-                        <div className="mt-2.5 relative w-full aspect-video max-h-72 rounded-xl overflow-hidden border-2 border-slate-700 bg-black shadow-xl group">
+                        <div className="mt-3 relative w-full aspect-video max-h-56 rounded-xl overflow-hidden border-2 border-slate-700 bg-black shadow-xl">
                           <img
                             src={getMediaUrl(newsForm.thumbnail)}
                             alt="Thumbnail preview"
                             className="w-full h-full object-contain bg-slate-950"
                           />
-                          {/* Top-Right 'X' Close Button */}
                           <button
                             type="button"
                             onClick={() => setNewsForm((prev) => ({ ...prev, thumbnail: '' }))}
-                            className="absolute top-2.5 right-2.5 z-20 w-8 h-8 rounded-full bg-slate-900/90 hover:bg-red-600 text-slate-200 hover:text-white border border-slate-600/80 flex items-center justify-center transition-all shadow-lg backdrop-blur-sm cursor-pointer"
+                            className="absolute top-2 right-2 z-20 w-7 h-7 rounded-full bg-slate-900/90 hover:bg-red-600 text-slate-200 hover:text-white border border-slate-600 flex items-center justify-center transition-all shadow-lg cursor-pointer"
                             title="Remove image"
                           >
-                            <X className="w-4 h-4" />
+                            <X className="w-3.5 h-3.5" />
                           </button>
-                          {/* Top-Left Preview Badge */}
-                          <div className="absolute top-2.5 left-2.5 z-10 px-2 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-slate-300 border border-white/10 backdrop-blur-sm flex items-center gap-1 pointer-events-none">
+                          <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-slate-300 border border-white/10 flex items-center gap-1">
                             <ImageIcon className="w-3 h-3 text-amber-400" />
-                            <span>Photo Preview</span>
+                            <span>Photo Attached</span>
                           </div>
-                          {/* Watermark Overlay Badge if enabled */}
-                          {newsForm.watermarkPhoto && (
-                            <div className="absolute bottom-2.5 right-2.5 z-10 pointer-events-none select-none flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-950/85 backdrop-blur-md border border-amber-500/60 shadow-lg text-white">
-                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                              <span className="text-[10px] font-black tracking-wide text-amber-300">
-                                सीमांचल एक्सप्रेस वॉटरमार्क
-                              </span>
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>
 
-                    {/* Video Clip */}
+                    {/* Watermark Checkbox for Photo */}
+                    <label className="flex items-start gap-2.5 cursor-pointer text-slate-200 hover:text-white pt-2 border-t border-slate-800/80">
+                      <input
+                        type="checkbox"
+                        checked={newsForm.watermarkPhoto}
+                        onChange={(e) => setNewsForm({ ...newsForm, watermarkPhoto: e.target.checked })}
+                        className="mt-0.5 w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-slate-900 border-slate-600"
+                      />
+                      <div>
+                        <span className="font-bold text-xs block text-slate-200">फोटो पर वॉटरमार्क जोड़ें (Watermark on Image)</span>
+                        <span className="text-[10px] text-slate-400">Apply official channel watermark directly onto image file</span>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Column 2: Video Clip */}
+                  <div className="space-y-3 bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
                     <div>
-                      <label className="font-bold text-slate-200 mb-1.5 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">
-                          <Video className="w-3.5 h-3.5 text-red-500" />
-                          Video Clip (Upload File or URL)
-                        </span>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-1.5">
+                          <Video className="w-4 h-4 text-red-500" />
+                          Video Clip
+                        </label>
                         <div className="flex items-center gap-2">
                           {newsForm.videoUrl && (
                             <button
@@ -1617,9 +1631,9 @@ export default function ReporterDashboard() {
                               <span>Clear</span>
                             </button>
                           )}
-                          <label className={`cursor-pointer px-2.5 py-0.5 rounded text-[11px] font-bold border flex items-center gap-1 transition-all ${uploadingVideo
+                          <label className={`cursor-pointer px-2.5 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1 transition-all ${uploadingVideo
                             ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                            : 'bg-red-950/80 hover:bg-red-900 text-red-300 border-red-800/80'
+                            : 'bg-red-950/80 hover:bg-red-900 text-red-300 border-red-800/80 hover:text-white'
                             }`}>
                             <Upload className="w-3 h-3" />
                             {uploadingVideo ? 'Uploading...' : 'Upload Video'}
@@ -1632,7 +1646,8 @@ export default function ReporterDashboard() {
                             />
                           </label>
                         </div>
-                      </label>
+                      </div>
+
                       <input
                         type="text"
                         value={newsForm.videoUrl}
@@ -1641,93 +1656,63 @@ export default function ReporterDashboard() {
                         className="w-full px-3.5 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono text-[11px]"
                       />
 
-                      {/* Large Video Preview with Watermark & X Close Button */}
+                      {/* Video Player Preview with Top-Right Watermark */}
                       {newsForm.videoUrl && (
-                        <div className="mt-2.5 space-y-2">
-                          <div className="relative w-full aspect-video max-h-72 rounded-xl overflow-hidden border-2 border-slate-700 bg-black shadow-xl">
-                            {newsForm.videoUrl.includes('youtube.com') || newsForm.videoUrl.includes('youtu.be') ? (
-                              <iframe
-                                src={
-                                  newsForm.videoUrl.includes('watch?v=')
-                                    ? newsForm.videoUrl.replace('watch?v=', 'embed/').split('&')[0]
-                                    : newsForm.videoUrl.includes('youtu.be/')
-                                      ? newsForm.videoUrl.replace('youtu.be/', 'www.youtube.com/embed/')
-                                      : newsForm.videoUrl
-                                }
-                                title="Video Preview"
-                                className="w-full h-full border-0 pointer-events-none"
-                              />
-                            ) : (
-                              <video
-                                src={getMediaUrl(newsForm.videoUrl)}
-                                controls
-                                className="w-full h-full object-contain"
-                              />
-                            )}
+                        <div className="mt-3 relative w-full aspect-video max-h-56 rounded-xl overflow-hidden border-2 border-slate-700 bg-black shadow-xl">
+                          {newsForm.videoUrl.includes('youtube.com') || newsForm.videoUrl.includes('youtu.be') ? (
+                            <iframe
+                              src={
+                                newsForm.videoUrl.includes('watch?v=')
+                                  ? newsForm.videoUrl.replace('watch?v=', 'embed/').split('&')[0]
+                                  : newsForm.videoUrl.includes('youtu.be/')
+                                    ? newsForm.videoUrl.replace('youtu.be/', 'www.youtube.com/embed/')
+                                    : newsForm.videoUrl
+                              }
+                              title="Video Preview"
+                              className="w-full h-full border-0 pointer-events-none"
+                            />
+                          ) : (
+                            <video
+                              src={getMediaUrl(newsForm.videoUrl)}
+                              controls
+                              className="w-full h-full object-contain"
+                            />
+                          )}
 
-                            {/* Top-Right 'X' Close Button */}
-                            <button
-                              type="button"
-                              onClick={() => setNewsForm((prev) => ({ ...prev, videoUrl: '' }))}
-                              className="absolute top-2.5 right-2.5 z-30 w-8 h-8 rounded-full bg-slate-900/90 hover:bg-red-600 text-slate-200 hover:text-white border border-slate-600/80 flex items-center justify-center transition-all shadow-lg backdrop-blur-sm cursor-pointer"
-                              title="Remove video"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewsForm((prev) => ({ ...prev, videoUrl: '' }))}
+                            className="absolute top-2 right-2 z-30 w-7 h-7 rounded-full bg-slate-900/90 hover:bg-red-600 text-slate-200 hover:text-white border border-slate-600 flex items-center justify-center transition-all shadow-lg cursor-pointer"
+                            title="Remove video"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
 
-                            {/* Top-Left Preview Badge */}
-                            <div className="absolute top-2.5 left-2.5 z-20 px-2 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-slate-300 border border-white/10 backdrop-blur-sm flex items-center gap-1 pointer-events-none">
-                              <Video className="w-3 h-3 text-red-400" />
-                              <span>Video Preview</span>
-                            </div>
-
-                            {/* Video Watermark Overlay Badge if enabled */}
-                            {newsForm.watermarkVideo && <VideoWatermarkBadge />}
+                          <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-slate-300 border border-white/10 flex items-center gap-1 pointer-events-none">
+                            <Video className="w-3 h-3 text-red-400" />
+                            <span>Video Preview</span>
                           </div>
 
-                          <div className="p-2 px-3 rounded-lg bg-slate-900 border border-slate-700/80 text-[11px] text-emerald-400 flex items-center justify-between">
-                            <span className="truncate max-w-[280px]">✓ Video Attached: {newsForm.videoUrl}</span>
-                            <button
-                              type="button"
-                              onClick={() => setNewsForm((prev) => ({ ...prev, videoUrl: '' }))}
-                              className="text-red-400 hover:text-red-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <X className="w-3.5 h-3.5" /> Remove
-                            </button>
-                          </div>
+                          {/* Video Watermark Overlay Badge (at Top-Right) */}
+                          {newsForm.watermarkVideo && <VideoWatermarkBadge className="top-2.5 right-11" watermarkLogo={watermarkLogo} />}
                         </div>
                       )}
                     </div>
+
+                    {/* Watermark Checkbox for Video */}
+                    <label className="flex items-start gap-2.5 cursor-pointer text-slate-200 hover:text-white pt-2 border-t border-slate-800/80">
+                      <input
+                        type="checkbox"
+                        checked={newsForm.watermarkVideo}
+                        onChange={(e) => setNewsForm({ ...newsForm, watermarkVideo: e.target.checked })}
+                        className="mt-0.5 w-4 h-4 rounded text-red-500 focus:ring-red-500 bg-slate-900 border-slate-600"
+                      />
+                      <div>
+                        <span className="font-bold text-xs block text-slate-200">प्लेयर पर वॉटरमार्क जोड़ें (Watermark on Player)</span>
+                        <span className="text-[10px] text-slate-400">Display official broadcast watermark badge at top-right of player</span>
+                      </div>
+                    </label>
                   </div>
-                </div>
-
-                {/* Separate Watermark Options for Photo & Video */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-800/60 border border-slate-700/80 rounded-xl">
-                  <label className="flex items-start gap-2.5 cursor-pointer text-slate-200 hover:text-white">
-                    <input
-                      type="checkbox"
-                      checked={newsForm.watermarkPhoto}
-                      onChange={(e) => setNewsForm({ ...newsForm, watermarkPhoto: e.target.checked })}
-                      className="mt-0.5 w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-slate-900 border-slate-600"
-                    />
-                    <div>
-                      <span className="font-bold text-xs block text-slate-200">फोटो पर वॉटरमार्क जोड़ें (Photo Watermark)</span>
-                      <span className="text-[10px] text-slate-400">Apply official channel watermark on uploaded photo</span>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-2.5 cursor-pointer text-slate-200 hover:text-white">
-                    <input
-                      type="checkbox"
-                      checked={newsForm.watermarkVideo}
-                      onChange={(e) => setNewsForm({ ...newsForm, watermarkVideo: e.target.checked })}
-                      className="mt-0.5 w-4 h-4 rounded text-red-500 focus:ring-red-500 bg-slate-900 border-slate-600"
-                    />
-                    <div>
-                      <span className="font-bold text-xs block text-slate-200">वीडियो पर वॉटरमार्क जोड़ें (Video Watermark)</span>
-                      <span className="text-[10px] text-slate-400">Display official broadcast watermark badge on video player</span>
-                    </div>
-                  </label>
                 </div>
 
                 {/* Body Content with Markdown Toolbar & Live Preview Toggle */}
@@ -1966,149 +1951,219 @@ export default function ReporterDashboard() {
             {/* Reports list */}
             {filteredReports.length > 0 ? (
               <div className="space-y-4">
-                {filteredReports.map((story) => (
-                  <div
-                    key={story._id}
-                    className="p-4 rounded-xl border border-slate-800 bg-slate-800/40 hover:border-slate-700 transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
-                  >
-                    <div className="flex gap-4 items-start">
-                      <div className="w-24 h-20 rounded-lg overflow-hidden bg-slate-800 shrink-0 border border-slate-700 relative">
-                        <img
-                          src={story.thumbnail || '/uploads/default-news.jpg'}
-                          alt={story.title}
-                          className="w-full h-full object-cover"
-                        />
-                        {story.videoUrl && (
-                          <div className="absolute bottom-1 right-1 bg-red-600 text-white p-1 rounded-full shadow">
-                            <Video className="w-3 h-3" />
-                          </div>
-                        )}
-                      </div>
+                {filteredReports.map((story) => {
+                  let previewImg = '';
+                  if (story.thumbnail) {
+                    previewImg = getMediaUrl(story.thumbnail);
+                  } else if (story.videoUrl) {
+                    if (story.videoUrl.includes('youtu.be/')) {
+                      const id = story.videoUrl.split('youtu.be/')[1]?.split('?')[0];
+                      if (id) previewImg = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+                    } else if (story.videoUrl.includes('watch?v=')) {
+                      const id = story.videoUrl.split('watch?v=')[1]?.split('&')[0];
+                      if (id) previewImg = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+                    } else if (story.videoUrl.includes('embed/')) {
+                      const id = story.videoUrl.split('embed/')[1]?.split('?')[0];
+                      if (id) previewImg = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+                    }
+                  }
 
-                      <div>
-                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                          {Array.isArray(story.categories) && story.categories.length > 0 ? (
-                            story.categories.map((c, idx) => (
-                              <span key={c._id || idx} className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-950 text-amber-400 uppercase border border-amber-800/60">
-                                {c.name || c.nameHindi || 'News'}
-                              </span>
-                            ))
+                  return (
+                    <div
+                      key={story._id}
+                      className="p-5 rounded-2xl border border-slate-800 bg-slate-850/60 hover:border-slate-700 hover:bg-slate-800/40 transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-5 shadow-sm"
+                    >
+                      {/* Left: Thumbnail & Story Data */}
+                      <div className="flex gap-4 items-start w-full md:w-auto flex-1 min-w-0">
+                        {/* Media Preview Thumbnail */}
+                        <div
+                          onClick={() => setSelectedReportModal(story)}
+                          className="w-28 h-24 sm:w-36 sm:h-28 rounded-xl overflow-hidden bg-slate-950 shrink-0 border border-slate-700/80 relative cursor-pointer group shadow-md"
+                          title="Click to view story details"
+                        >
+                          {previewImg ? (
+                            <img
+                              src={previewImg}
+                              alt={story.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
                           ) : (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-950 text-amber-400 uppercase border border-amber-800/60">
-                              {story.category?.name || story.categoryName || 'News'}
-                            </span>
+                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 bg-slate-900 text-[10px]">
+                              <ImageIcon className="w-6 h-6 text-slate-600 mb-1" />
+                              <span>No Media</span>
+                            </div>
                           )}
-                          <span className="text-xs text-slate-400 flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-red-400" />
-                            {story.location}
-                          </span>
+
+                          {story.videoUrl && (
+                            <div className="absolute top-1.5 left-1.5 bg-red-600/90 text-white px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 shadow">
+                              <Video className="w-2.5 h-2.5" />
+                              <span>Video</span>
+                            </div>
+                          )}
+
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <Eye className="w-5 h-5 text-white drop-shadow" />
+                          </div>
                         </div>
 
-                        <h4 className="text-sm font-bold text-white line-clamp-1">{story.title}</h4>
-                        {story.subtitle && (
-                          <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">
-                            {story.subtitle}
-                          </p>
+                        {/* Story Information */}
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {Array.isArray(story.categories) && story.categories.length > 0 ? (
+                              story.categories.map((c, idx) => (
+                                <span
+                                  key={c._id || idx}
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-950/80 text-amber-300 uppercase border border-amber-800/60"
+                                >
+                                  {c.name || c.nameHindi || 'News'}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-950/80 text-amber-300 uppercase border border-amber-800/60">
+                                {story.category?.name || story.categoryName || 'News'}
+                              </span>
+                            )}
+
+                            <span className="text-xs text-slate-400 flex items-center gap-1 font-medium">
+                              <MapPin className="w-3 h-3 text-red-400 shrink-0" />
+                              <span className="truncate max-w-[200px]">{story.location}</span>
+                            </span>
+                          </div>
+
+                          <h4
+                            onClick={() => setSelectedReportModal(story)}
+                            className="text-sm sm:text-base font-bold text-white line-clamp-2 hover:text-amber-400 cursor-pointer transition-colors"
+                          >
+                            {story.title}
+                          </h4>
+
+                          {story.subtitle && (
+                            <p className="text-xs text-slate-400 line-clamp-1">
+                              {story.subtitle}
+                            </p>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-1">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-slate-500" />
+                              Filed: {new Date(story.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <Eye className="w-3 h-3 text-sky-400" />
+                              {story.views || 0} views
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <Heart className="w-3 h-3 text-rose-400" />
+                              {story.likes || 0} likes
+                            </span>
+                          </div>
+
+                          {/* If declined, show editor reason */}
+                          {story.status === 'rejected' && story.rejectionReason && (
+                            <div className="mt-2 p-2.5 rounded-lg bg-red-950/80 border border-red-800 text-[11px] text-red-200">
+                              <strong className="text-red-400">Editor Feedback:</strong> {story.rejectionReason}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right End: Dedicated Single Column for ALL Actions */}
+                      <div className="flex flex-col gap-2 shrink-0 w-full md:w-36 pt-3 md:pt-0 md:border-l md:border-slate-800 md:pl-4 justify-center">
+                        {/* Status Badge */}
+                        <span
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider text-center ${story.status === 'published'
+                              ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-700/80 shadow-sm'
+                              : story.status === 'pending'
+                                ? 'bg-amber-950/90 text-amber-300 border border-amber-700/80 shadow-sm'
+                                : 'bg-red-950/90 text-red-300 border border-red-700/80 shadow-sm'
+                            }`}
+                        >
+                          {story.status === 'published'
+                            ? '✓ Published'
+                            : story.status === 'pending'
+                              ? '⏳ Under Review'
+                              : '✕ Declined'}
+                        </span>
+
+                        {/* View Report Story Button */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedReportModal(story)}
+                          className="w-full px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-700 shadow-sm transition-all cursor-pointer"
+                          title="View Full Story & Media Dossier"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-amber-400" />
+                          <span>View Story</span>
+                        </button>
+
+                        {/* Live Story Link (if published) */}
+                        {story.status === 'published' && (
+                          <Link
+                            href={`/news/${story.slug}`}
+                            target="_blank"
+                            className="w-full px-2.5 py-1.5 bg-sky-950/80 hover:bg-sky-900 text-sky-300 hover:text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border border-sky-800 shadow-sm transition-all"
+                            title="Open published article live on website"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>View Live</span>
+                          </Link>
                         )}
 
-                        <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-2">
-                          <span>Filed: {new Date(story.createdAt).toLocaleDateString('en-US')}</span>
-                          <span>•</span>
-                          <span>Views: {story.views || 0}</span>
-                        </div>
+                        {/* Edit & Resubmit Button (if pending or rejected) */}
+                        {(story.status === 'pending' || story.status === 'rejected') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              let initialCategories = [];
+                              if (Array.isArray(story.categories) && story.categories.length > 0) {
+                                initialCategories = story.categories.map((c) => (typeof c === 'object' && c ? c._id : c)).filter(Boolean);
+                              } else if (story.category) {
+                                initialCategories = [typeof story.category === 'object' && story.category ? story.category._id : story.category].filter(Boolean);
+                              } else if (categories[0]?._id) {
+                                initialCategories = [categories[0]._id];
+                              }
 
-                        {/* If declined, show reason */}
-                        {story.status === 'rejected' && story.rejectionReason && (
-                          <div className="mt-2.5 p-2.5 rounded bg-red-950/80 border border-red-800 text-[11px] text-red-300">
-                            <strong>Editor Feedback:</strong> {story.rejectionReason}
-                          </div>
+                              setEditingReport(story);
+                              setEditReportForm({
+                                title: story.title || '',
+                                subtitle: story.subtitle || '',
+                                category: initialCategories[0] || '',
+                                categories: initialCategories,
+                                location: story.location || '',
+                                content: story.content || '',
+                                thumbnail: story.thumbnail || '',
+                                videoUrl: story.videoUrl || '',
+                                tags: Array.isArray(story.tags) ? story.tags.join(', ') : '',
+                                watermarkPhoto: story.watermarkPhoto !== undefined ? Boolean(story.watermarkPhoto) : (story.hasWatermark !== undefined ? Boolean(story.hasWatermark) : true),
+                                watermarkVideo: story.watermarkVideo !== undefined ? Boolean(story.watermarkVideo) : (story.hasWatermark !== undefined ? Boolean(story.hasWatermark) : true),
+                              });
+                            }}
+                            className="w-full px-2.5 py-1.5 bg-amber-950/80 hover:bg-amber-900 text-amber-300 hover:text-amber-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border border-amber-800 shadow-sm transition-all cursor-pointer"
+                            title="Edit and Update Report"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Edit & Update</span>
+                          </button>
+                        )}
+
+                        {/* Delete Button (if pending or rejected) */}
+                        {(story.status === 'pending' || story.status === 'rejected') && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReport(story._id)}
+                            className="w-full px-2.5 py-1.5 bg-red-950/80 hover:bg-red-900 text-red-300 hover:text-red-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border border-red-800 shadow-sm transition-all cursor-pointer"
+                            title="Delete draft/report"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
                         )}
                       </div>
                     </div>
-
-                    {/* Actions & Status */}
-                    <div className="flex flex-wrap items-center gap-2 self-end md:self-center shrink-0">
-                      <button
-                        onClick={() => setSelectedReportModal(story)}
-                        className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded text-xs font-bold flex items-center gap-1 border border-slate-700 shadow-sm"
-                        title="View Submission Details and Content"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-amber-400" /> View Report
-                      </button>
-
-                      {/* If pending or rejected, allow Edit & Resubmit */}
-                      {(story.status === 'pending' || story.status === 'rejected') && (
-                        <button
-                          onClick={() => {
-                            let initialCategories = [];
-                            if (Array.isArray(story.categories) && story.categories.length > 0) {
-                              initialCategories = story.categories.map((c) => (typeof c === 'object' && c ? c._id : c)).filter(Boolean);
-                            } else if (story.category) {
-                              initialCategories = [typeof story.category === 'object' && story.category ? story.category._id : story.category].filter(Boolean);
-                            } else if (categories[0]?._id) {
-                              initialCategories = [categories[0]._id];
-                            }
-
-                            setEditingReport(story);
-                            setEditReportForm({
-                              title: story.title || '',
-                              subtitle: story.subtitle || '',
-                              category: initialCategories[0] || '',
-                              categories: initialCategories,
-                              location: story.location || '',
-                              content: story.content || '',
-                              thumbnail: story.thumbnail || '',
-                              videoUrl: story.videoUrl || '',
-                              tags: Array.isArray(story.tags) ? story.tags.join(', ') : '',
-                              watermarkPhoto: story.watermarkPhoto !== undefined ? Boolean(story.watermarkPhoto) : (story.hasWatermark !== undefined ? Boolean(story.hasWatermark) : true),
-                              watermarkVideo: story.watermarkVideo !== undefined ? Boolean(story.watermarkVideo) : (story.hasWatermark !== undefined ? Boolean(story.hasWatermark) : true),
-                            });
-                          }}
-                          className="px-2.5 py-1 bg-amber-950/80 hover:bg-amber-900 text-amber-300 rounded text-xs font-bold flex items-center gap-1 border border-amber-800 shadow-sm"
-                          title="Edit and Update Report"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" /> Edit
-                        </button>
-                      )}
-
-                      {/* If pending or rejected, allow Delete */}
-                      {(story.status === 'pending' || story.status === 'rejected') && (
-                        <button
-                          onClick={() => handleDeleteReport(story._id)}
-                          className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 text-red-300 rounded text-xs font-bold flex items-center gap-1 border border-red-800 shadow-sm"
-                          title="Delete draft/report"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Delete
-                        </button>
-                      )}
-
-                      <span
-                        className={`px-3 py-1 rounded text-xs font-bold uppercase ${story.status === 'published'
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                          : story.status === 'pending'
-                            ? 'bg-amber-950 text-amber-400 border border-amber-800'
-                            : 'bg-red-950 text-red-400 border border-red-800'
-                          }`}
-                      >
-                        {story.status === 'published'
-                          ? 'Published Live'
-                          : story.status === 'pending'
-                            ? 'In Review'
-                            : 'Declined'}
-                      </span>
-
-                      {story.status === 'published' && (
-                        <Link
-                          href={`/news/${story.slug}`}
-                          target="_blank"
-                          className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-bold flex items-center gap-1 border border-slate-700"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5 text-amber-400" /> View Live
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="py-12 text-center text-xs text-slate-500">
@@ -2746,86 +2801,80 @@ export default function ReporterDashboard() {
                     />
                   </div>
 
-                  {/* 2-Column Responsive Grid: Metadata & Media */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    {/* Left: Categories, Dateline, Tags */}
-                    <div className="space-y-4 bg-slate-950/50 p-4 rounded-xl border border-slate-800">
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="block font-bold text-slate-300">
-                            Categories * <span className="text-[11px] font-normal text-amber-300">(Select 1 or more / 1 से अधिक श्रेणियां चुनें)</span>
-                          </label>
-                          <span className="text-[11px] text-slate-400 font-bold">
-                            {(editReportForm.categories || []).length} selected
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 p-2 bg-slate-800 border border-slate-700 rounded-lg max-h-36 overflow-y-auto">
-                          {categories.map((c) => {
-                            const isSelected = (editReportForm.categories || []).includes(c._id) || (editReportForm.categories?.length === 0 && editReportForm.category === c._id);
-                            return (
-                              <button
-                                key={c._id}
-                                type="button"
-                                onClick={() => {
-                                  const current = (editReportForm.categories && editReportForm.categories.length > 0)
-                                    ? editReportForm.categories
-                                    : (editReportForm.category ? [editReportForm.category] : []);
-                                  let updated;
-                                  if (current.includes(c._id)) {
-                                    updated = current.filter((id) => id !== c._id);
-                                  } else {
-                                    updated = [...current, c._id];
-                                  }
-                                  setEditReportForm({
-                                    ...editReportForm,
-                                    categories: updated,
-                                    category: updated[0] || '',
-                                  });
-                                }}
-                                className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${isSelected
-                                  ? 'bg-amber-500 text-slate-950 font-bold shadow-sm ring-1 ring-amber-300'
-                                  : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-700'
-                                  }`}
-                              >
-                                <span className="text-[10px]">{isSelected ? '✓' : '+'}</span>
-                                <span>{c.name}</span>
-                                {c.nameHindi && <span className="text-[10px] opacity-75">({c.nameHindi})</span>}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-300 mb-1">Dateline / Location *</label>
-                        <input
-                          type="text"
-                          required
-                          value={editReportForm.location}
-                          onChange={(e) => setEditReportForm({ ...editReportForm, location: e.target.value })}
-                          className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-300 mb-1">Tags (comma separated)</label>
-                        <input
-                          type="text"
-                          value={editReportForm.tags}
-                          onChange={(e) => setEditReportForm({ ...editReportForm, tags: e.target.value })}
-                          placeholder="e.g. Flood, Roadways, Kishanganj"
-                          className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-[11px] focus:outline-none focus:border-amber-500"
-                        />
-                      </div>
+                  {/* ROW 1: News Categories in Single Row */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block font-bold text-slate-200 text-xs sm:text-sm">
+                        News Categories * <span className="text-xs font-normal text-amber-300">(Select 1 or more / 1 से अधिक श्रेणियां चुनें)</span>
+                      </label>
+                      <span className="text-xs text-amber-400 font-bold bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-800/80">
+                        {(editReportForm.categories || []).length} selected
+                      </span>
                     </div>
+                    <div className="flex flex-wrap gap-2 p-2 bg-slate-800 border border-slate-700 rounded-xl max-h-36 overflow-y-auto">
+                      {categories.map((c) => {
+                        const isSelected = (editReportForm.categories || []).includes(c._id) || (editReportForm.categories?.length === 0 && editReportForm.category === c._id);
+                        return (
+                          <button
+                            key={c._id}
+                            type="button"
+                            onClick={() => {
+                              const current = (editReportForm.categories && editReportForm.categories.length > 0)
+                                ? editReportForm.categories
+                                : (editReportForm.category ? [editReportForm.category] : []);
+                              let updated;
+                              if (current.includes(c._id)) {
+                                updated = current.filter((id) => id !== c._id);
+                              } else {
+                                updated = [...current, c._id];
+                              }
+                              setEditReportForm({
+                                ...editReportForm,
+                                categories: updated,
+                                category: updated[0] || '',
+                              });
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${isSelected
+                              ? 'bg-amber-500 text-slate-950 font-bold shadow-md ring-1 ring-amber-300 scale-[1.02]'
+                              : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-700 border border-slate-800'
+                              }`}
+                          >
+                            <span className="text-[11px] font-bold">{isSelected ? '✓' : '+'}</span>
+                            <span>{c.name}</span>
+                            {c.nameHindi && <span className="text-[10px] opacity-80">({c.nameHindi})</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-                    {/* Right: Media Section */}
-                    <div className="space-y-4 bg-slate-950/50 p-4 rounded-xl border border-slate-800">
+                  {/* ROW 2: Beat Dateline / Reporting Location Full Width */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                    <label className="block font-bold text-slate-200 mb-1.5 text-xs sm:text-sm">
+                      Beat Dateline / Reporting Location * <span className="text-xs font-normal text-slate-400">(e.g. Bahadurganj, Kishanganj, Bihar)</span>
+                    </label>
+                    <div className="relative">
+                      <MapPin className="w-4 h-4 absolute left-3.5 top-3 text-red-500" />
+                      <input
+                        type="text"
+                        required
+                        value={editReportForm.location}
+                        onChange={(e) => setEditReportForm({ ...editReportForm, location: e.target.value })}
+                        placeholder="e.g. Bahadurganj, Kishanganj, Bihar"
+                        className="w-full pl-10 pr-3.5 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 text-xs sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* ROW 3: Photo and Video Upload & Preview in 2 Columns */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Column 1: Featured Photograph */}
+                    <div className="space-y-3 bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
                       <div>
-                        <label className="font-bold text-slate-300 mb-1 flex items-center justify-between">
-                          <span className="flex items-center gap-1.5">
-                            <ImageIcon className="w-3.5 h-3.5 text-amber-400" /> Featured Photograph
-                          </span>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-1.5">
+                            <ImageIcon className="w-4 h-4 text-amber-400" /> Featured Photograph
+                          </label>
                           <div className="flex items-center gap-2">
                             {editReportForm.thumbnail && (
                               <button
@@ -2838,9 +2887,9 @@ export default function ReporterDashboard() {
                                 <span>Clear</span>
                               </button>
                             )}
-                            <label className="cursor-pointer text-[10px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                            <label className="cursor-pointer text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors">
                               <Upload className="w-3 h-3" />
-                              {uploadingImage ? 'Uploading...' : 'Upload'}
+                              {uploadingImage ? 'Uploading...' : 'Upload Photo'}
                               <input
                                 type="file"
                                 accept="image/*"
@@ -2849,54 +2898,62 @@ export default function ReporterDashboard() {
                               />
                             </label>
                           </div>
-                        </label>
+                        </div>
+
                         <input
                           type="text"
                           value={editReportForm.thumbnail}
                           onChange={(e) => setEditReportForm({ ...editReportForm, thumbnail: e.target.value })}
                           placeholder="Upload or paste image URL..."
-                          className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-[11px] focus:outline-none focus:border-amber-500"
+                          className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono text-[11px] focus:outline-none focus:border-amber-500"
                         />
-                        {/* Large Image Preview with X button and Watermark Indicator */}
+
+                        {/* Photo Preview */}
                         {editReportForm.thumbnail && (
-                          <div className="mt-2.5 relative w-full aspect-video max-h-72 rounded-xl overflow-hidden border-2 border-slate-700 bg-black shadow-xl group">
+                          <div className="mt-3 relative w-full aspect-video max-h-56 rounded-xl overflow-hidden border-2 border-slate-700 bg-black shadow-xl">
                             <img
                               src={getMediaUrl(editReportForm.thumbnail)}
-                              alt="Thumbnail"
+                              alt="Thumbnail preview"
                               className="w-full h-full object-contain bg-slate-950"
                             />
-                            {/* Remove 'X' button */}
                             <button
                               type="button"
                               onClick={() => setEditReportForm((prev) => ({ ...prev, thumbnail: '' }))}
-                              className="absolute top-2.5 right-2.5 z-20 w-8 h-8 rounded-full bg-slate-900/90 hover:bg-red-600 text-slate-200 hover:text-white border border-slate-600/80 flex items-center justify-center transition-all shadow-lg backdrop-blur-sm cursor-pointer"
+                              className="absolute top-2 right-2 z-20 w-7 h-7 rounded-full bg-slate-900/90 hover:bg-red-600 text-slate-200 hover:text-white border border-slate-600 flex items-center justify-center transition-all shadow-lg cursor-pointer"
                               title="Remove image"
                             >
-                              <X className="w-4 h-4" />
+                              <X className="w-3.5 h-3.5" />
                             </button>
-                            {/* Top-Left Preview Badge */}
-                            <div className="absolute top-2.5 left-2.5 z-10 px-2 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-slate-300 border border-white/10 backdrop-blur-sm flex items-center gap-1 pointer-events-none">
+                            <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-slate-300 border border-white/10 flex items-center gap-1">
                               <ImageIcon className="w-3 h-3 text-amber-400" />
-                              <span>Photo Preview</span>
+                              <span>Photo Attached</span>
                             </div>
-                            {/* Watermark Overlay Badge if enabled */}
-                            {editReportForm.watermarkPhoto && (
-                              <div className="absolute bottom-2.5 right-2.5 z-10 pointer-events-none select-none flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-950/85 backdrop-blur-md border border-amber-500/60 shadow-lg text-white">
-                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                                <span className="text-[10px] font-black tracking-wide text-amber-300">
-                                  सीमांचल एक्सप्रेस वॉटरमार्क
-                                </span>
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
 
+                      {/* Watermark Checkbox for Photo */}
+                      <label className="flex items-start gap-2.5 cursor-pointer text-slate-200 hover:text-white pt-2 border-t border-slate-800/80">
+                        <input
+                          type="checkbox"
+                          checked={editReportForm.watermarkPhoto}
+                          onChange={(e) => setEditReportForm({ ...editReportForm, watermarkPhoto: e.target.checked })}
+                          className="mt-0.5 w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-slate-900 border-slate-600"
+                        />
+                        <div>
+                          <span className="font-bold text-xs block text-slate-200">फोटो पर वॉटरमार्क जोड़ें (Watermark on Image)</span>
+                          <span className="text-[10px] text-slate-400">Apply official channel watermark directly onto image file</span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Column 2: Video Clip */}
+                    <div className="space-y-3 bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
                       <div>
-                        <label className="font-bold text-slate-300 mb-1 flex items-center justify-between">
-                          <span className="flex items-center gap-1.5">
-                            <Video className="w-3.5 h-3.5 text-red-500" /> Video Clip (Upload File or URL)
-                          </span>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-1.5">
+                            <Video className="w-4 h-4 text-red-500" /> Video Clip
+                          </label>
                           <div className="flex items-center gap-2">
                             {editReportForm.videoUrl && (
                               <button
@@ -2909,9 +2966,9 @@ export default function ReporterDashboard() {
                                 <span>Clear</span>
                               </button>
                             )}
-                            <label className={`cursor-pointer px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 transition-all ${uploadingEditVideo
+                            <label className={`cursor-pointer px-2.5 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1 transition-all ${uploadingEditVideo
                               ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                              : 'bg-amber-950/80 hover:bg-amber-900 text-amber-300 border-amber-800/80'
+                              : 'bg-red-950/80 hover:bg-red-900 text-red-300 border-red-800/80 hover:text-white'
                               }`}>
                               <Upload className="w-3 h-3" />
                               {uploadingEditVideo ? 'Uploading...' : 'Upload Video'}
@@ -2924,102 +2981,73 @@ export default function ReporterDashboard() {
                               />
                             </label>
                           </div>
-                        </label>
+                        </div>
+
                         <input
                           type="text"
                           value={editReportForm.videoUrl}
                           onChange={(e) => setEditReportForm({ ...editReportForm, videoUrl: e.target.value })}
-                          placeholder="Upload file above or paste YouTube / MP4 URL..."
-                          className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-[11px] focus:outline-none focus:border-amber-500"
+                          placeholder="Upload video above or paste YouTube / MP4 URL..."
+                          className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white font-mono text-[11px] focus:outline-none focus:border-amber-500"
                         />
 
-                        {/* Large Video Preview with Watermark & X Close Button */}
+                        {/* Video Player Preview with Top-Right Watermark */}
                         {editReportForm.videoUrl && (
-                          <div className="mt-2.5 space-y-2">
-                            <div className="relative w-full aspect-video max-h-72 rounded-xl overflow-hidden border-2 border-slate-700 bg-black shadow-xl">
-                              {editReportForm.videoUrl.includes('youtube.com') || editReportForm.videoUrl.includes('youtu.be') ? (
-                                <iframe
-                                  src={
-                                    editReportForm.videoUrl.includes('watch?v=')
-                                      ? editReportForm.videoUrl.replace('watch?v=', 'embed/').split('&')[0]
-                                      : editReportForm.videoUrl.includes('youtu.be/')
-                                        ? editReportForm.videoUrl.replace('youtu.be/', 'www.youtube.com/embed/')
-                                        : editReportForm.videoUrl
-                                  }
-                                  title="Video Preview"
-                                  className="w-full h-full border-0 pointer-events-none"
-                                />
-                              ) : (
-                                <video
-                                  src={getMediaUrl(editReportForm.videoUrl)}
-                                  controls
-                                  className="w-full h-full object-contain"
-                                />
-                              )}
+                          <div className="mt-3 relative w-full aspect-video max-h-56 rounded-xl overflow-hidden border-2 border-slate-700 bg-black shadow-xl">
+                            {editReportForm.videoUrl.includes('youtube.com') || editReportForm.videoUrl.includes('youtu.be') ? (
+                              <iframe
+                                src={
+                                  editReportForm.videoUrl.includes('watch?v=')
+                                    ? editReportForm.videoUrl.replace('watch?v=', 'embed/').split('&')[0]
+                                    : editReportForm.videoUrl.includes('youtu.be/')
+                                      ? editReportForm.videoUrl.replace('youtu.be/', 'www.youtube.com/embed/')
+                                      : editReportForm.videoUrl
+                                }
+                                title="Video Preview"
+                                className="w-full h-full border-0 pointer-events-none"
+                              />
+                            ) : (
+                              <video
+                                src={getMediaUrl(editReportForm.videoUrl)}
+                                controls
+                                className="w-full h-full object-contain"
+                              />
+                            )}
 
-                              {/* Top-Right 'X' Close Button */}
-                              <button
-                                type="button"
-                                onClick={() => setEditReportForm((prev) => ({ ...prev, videoUrl: '' }))}
-                                className="absolute top-2.5 right-2.5 z-30 w-8 h-8 rounded-full bg-slate-900/90 hover:bg-red-600 text-slate-200 hover:text-white border border-slate-600/80 flex items-center justify-center transition-all shadow-lg backdrop-blur-sm cursor-pointer"
-                                title="Remove video"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditReportForm((prev) => ({ ...prev, videoUrl: '' }))}
+                              className="absolute top-2 right-2 z-30 w-7 h-7 rounded-full bg-slate-900/90 hover:bg-red-600 text-slate-200 hover:text-white border border-slate-600 flex items-center justify-center transition-all shadow-lg cursor-pointer"
+                              title="Remove video"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
 
-                              {/* Top-Left Preview Badge */}
-                              <div className="absolute top-2.5 left-2.5 z-20 px-2 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-slate-300 border border-white/10 backdrop-blur-sm flex items-center gap-1 pointer-events-none">
-                                <Video className="w-3 h-3 text-red-400" />
-                                <span>Video Preview</span>
-                              </div>
-
-                              {/* Video Watermark Overlay Badge if enabled */}
-                              {editReportForm.watermarkVideo && <VideoWatermarkBadge />}
+                            <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-slate-300 border border-white/10 flex items-center gap-1 pointer-events-none">
+                              <Video className="w-3 h-3 text-red-400" />
+                              <span>Video Preview</span>
                             </div>
 
-                            <div className="p-2 px-3 rounded-lg bg-slate-900 border border-slate-700/80 text-[11px] text-emerald-400 flex items-center justify-between">
-                              <span className="truncate max-w-[280px]">✓ Video Attached: {editReportForm.videoUrl}</span>
-                              <button
-                                type="button"
-                                onClick={() => setEditReportForm((prev) => ({ ...prev, videoUrl: '' }))}
-                                className="text-red-400 hover:text-red-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                              >
-                                <X className="w-3.5 h-3.5" /> Remove
-                              </button>
-                            </div>
+                            {/* Video Watermark Overlay Badge (at Top-Right) */}
+                            {editReportForm.watermarkVideo && <VideoWatermarkBadge className="top-2.5 right-11" watermarkLogo={watermarkLogo} />}
                           </div>
                         )}
                       </div>
+
+                      {/* Watermark Checkbox for Video */}
+                      <label className="flex items-start gap-2.5 cursor-pointer text-slate-200 hover:text-white pt-2 border-t border-slate-800/80">
+                        <input
+                          type="checkbox"
+                          checked={editReportForm.watermarkVideo}
+                          onChange={(e) => setEditReportForm({ ...editReportForm, watermarkVideo: e.target.checked })}
+                          className="mt-0.5 w-4 h-4 rounded text-red-500 focus:ring-red-500 bg-slate-900 border-slate-600"
+                        />
+                        <div>
+                          <span className="font-bold text-xs block text-slate-200">प्लेयर पर वॉटरमार्क जोड़ें (Watermark on Player)</span>
+                          <span className="text-[10px] text-slate-400">Display official broadcast watermark badge at top-right of player</span>
+                        </div>
+                      </label>
                     </div>
-                  </div>
-
-                  {/* Separate Watermark Options for Photo & Video */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-800/80 border border-slate-700 rounded-xl">
-                    <label className="flex items-start gap-2.5 cursor-pointer text-slate-200 hover:text-white">
-                      <input
-                        type="checkbox"
-                        checked={editReportForm.watermarkPhoto}
-                        onChange={(e) => setEditReportForm({ ...editReportForm, watermarkPhoto: e.target.checked })}
-                        className="mt-0.5 w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-slate-900 border-slate-600"
-                      />
-                      <div>
-                        <span className="font-bold text-xs block text-slate-200">फोटो पर वॉटरमार्क (Photo Watermark)</span>
-                        <span className="text-[10px] text-slate-400">Apply watermark on uploaded photo</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-2.5 cursor-pointer text-slate-200 hover:text-white">
-                      <input
-                        type="checkbox"
-                        checked={editReportForm.watermarkVideo}
-                        onChange={(e) => setEditReportForm({ ...editReportForm, watermarkVideo: e.target.checked })}
-                        className="mt-0.5 w-4 h-4 rounded text-red-500 focus:ring-red-500 bg-slate-900 border-slate-600"
-                      />
-                      <div>
-                        <span className="font-bold text-xs block text-slate-200">वीडियो पर वॉटरमार्क (Video Watermark)</span>
-                        <span className="text-[10px] text-slate-400">Display broadcast watermark on video</span>
-                      </div>
-                    </label>
                   </div>
 
                   {/* Body Content with Markdown Toolbar & Live Preview Toggle */}
@@ -3222,12 +3250,30 @@ export default function ReporterDashboard() {
                     </div>
                   )}
                   {selectedReportModal.videoUrl ? (
-                    <div className="rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video flex items-center justify-center">
-                      <video
-                        src={getMediaUrl(selectedReportModal.videoUrl)}
-                        controls
-                        className="w-full h-full object-contain"
-                      />
+                    <div className="rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video relative flex items-center justify-center">
+                      {selectedReportModal.videoUrl.includes('youtube.com') || selectedReportModal.videoUrl.includes('youtu.be') ? (
+                        <iframe
+                          src={
+                            selectedReportModal.videoUrl.includes('watch?v=')
+                              ? selectedReportModal.videoUrl.replace('watch?v=', 'embed/').split('&')[0]
+                              : selectedReportModal.videoUrl.includes('youtu.be/')
+                                ? selectedReportModal.videoUrl.replace('youtu.be/', 'www.youtube.com/embed/')
+                                : selectedReportModal.videoUrl
+                          }
+                          title="Report Video"
+                          className="w-full h-full border-0"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <video
+                          src={getMediaUrl(selectedReportModal.videoUrl)}
+                          controls
+                          className="w-full h-full object-contain"
+                        />
+                      )}
+                      {(selectedReportModal.watermarkVideo || selectedReportModal.hasWatermark) && (
+                        <VideoWatermarkBadge className="top-2.5 right-2.5" watermarkLogo={watermarkLogo} />
+                      )}
                     </div>
                   ) : (
                     <div className="rounded-xl border border-slate-800 bg-slate-800/30 p-4 flex flex-col items-center justify-center text-center text-slate-500 text-xs">

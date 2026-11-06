@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Search, Eye, Sparkles, TrendingUp, MapPin, Calendar, Clock, ArrowRight } from 'lucide-react';
 import api from '../../lib/api';
+import getMediaUrl from '../../lib/imageHelper';
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -154,9 +155,13 @@ function SearchContent() {
                   >
                     <div className="h-48 w-full bg-slate-100 overflow-hidden relative">
                       <img
-                        src={item.thumbnail || '/uploads/default-news.jpg'}
+                        src={getMediaUrl(item.thumbnail, '/logo.jpeg')}
                         alt={item.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = '/logo.jpeg';
+                        }}
                       />
                       <span className="absolute bottom-2 left-2 bg-slate-900/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded flex items-center gap-1">
                         <MapPin className="w-3 h-3 text-red-400" />
@@ -219,9 +224,13 @@ function SearchContent() {
                     >
                       <div className="h-40 w-full bg-slate-100 overflow-hidden relative">
                         <img
-                          src={item.thumbnail || '/uploads/default-news.jpg'}
+                          src={getMediaUrl(item.thumbnail, '/logo.jpeg')}
                           alt={item.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/logo.jpeg';
+                          }}
                         />
                         <span className="absolute bottom-2 left-2 bg-slate-900/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded">
                           {item.location || 'Seemanchal'}
@@ -288,9 +297,13 @@ function SearchContent() {
                     >
                       <div className="h-44 w-full bg-slate-100 overflow-hidden relative">
                         <img
-                          src={item.thumbnail || '/uploads/default-news.jpg'}
+                          src={getMediaUrl(item.thumbnail, '/logo.jpeg')}
                           alt={item.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/logo.jpeg';
+                          }}
                         />
                         <span className="absolute bottom-2 left-2 bg-slate-900/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded">
                           {item.location || 'Seemanchal'}

@@ -1,11 +1,70 @@
 /**
  * watermarkHelper.js
- * Utility to stamp official 'सीमांचल एक्सप्रेस / Seemanchal Express' watermark
- * onto images using HTML5 Canvas before uploading, and provide watermark overlay for videos.
+ * Utility to stamp official watermark onto images using HTML5 Canvas (positioned on LEFT, pure image only - no text/box),
+ * and provide video watermark (positioned on RIGHT, pure image only - no text/box).
  */
 
-export async function applyWatermarkToImage(file) {
+import React, { useState, useEffect } from 'react';
+import api from './api';
+import getMediaUrl from './imageHelper';
+
+let cachedWatermarkUrl = null;
+
+export async function getWatermarkUrl() {
+  if (cachedWatermarkUrl) return cachedWatermarkUrl;
+  try {
+    const res = await api.get('/settings');
+    if (res.data?.success && res.data?.settings?.credentials?.watermarkLogo) {
+      cachedWatermarkUrl = res.data.settings.credentials.watermarkLogo;
+      return cachedWatermarkUrl;
+    }
+  } catch (_) {}
+  return '';
+}
+
+async function loadImage(src) {
+  if (!src) return null;
+  try {
+    const res = await fetch(src, { mode: 'cors' });
+    if (res.ok) {
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = blobUrl;
+      });
+    }
+  } catch (_) {}
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+export async function applyWatermarkToImage(file, watermarkLogoUrl = '') {
   if (!file || !file.type.startsWith('image/')) {
+    return file;
+  }
+
+  // Retrieve official watermark from settings if not explicitly passed
+  const logoSource = watermarkLogoUrl || (await getWatermarkUrl()) || '';
+  let logoImg = null;
+  if (logoSource) {
+    try {
+      logoImg = await loadImage(getMediaUrl(logoSource));
+    } catch (_) {
+      logoImg = null;
+    }
+  }
+
+  // If no watermark image could be loaded, return original file without fake box/text
+  if (!logoImg || !logoImg.width || !logoImg.height) {
     return file;
   }
 
@@ -27,63 +86,26 @@ export async function applyWatermarkToImage(file) {
           // 1. Draw base original image
           ctx.drawImage(img, 0, 0, width, height);
 
-          // 2. Compute responsive watermark badge sizing
-          const baseScale = Math.max(width, height) / 1000;
-          const scale = Math.min(Math.max(baseScale, 0.7), 2.5);
+          // 2. Compute responsive sizing for the watermark logo image on the TOP-LEFT
+          const targetWidth = Math.round(Math.min(Math.max(width * 0.24, 120), 450));
+          const logoAspect = logoImg.width / logoImg.height;
+          const targetHeight = Math.round(targetWidth / logoAspect);
 
-          const badgeWidth = Math.round(280 * scale);
-          const badgeHeight = Math.round(62 * scale);
-          const margin = Math.round(24 * scale);
+          const margin = Math.round(Math.max(width * 0.025, 16));
+          const x = margin;
+          const y = margin;
 
-          const x = width - badgeWidth - margin;
-          const y = height - badgeHeight - margin;
-          const radius = Math.round(10 * scale);
-
-          // 3. Draw Watermark Badge Background (Dark Glassmorphism)
+          // 3. Draw ONLY the watermark image (NO background box, NO border, NO text)
           ctx.save();
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.88)'; // slate-900 with high opacity
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)'; // red-500 border
-          ctx.lineWidth = Math.max(2, Math.round(2 * scale));
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+          ctx.shadowBlur = Math.round(targetWidth * 0.04);
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = Math.round(targetWidth * 0.02);
 
-          ctx.beginPath();
-          ctx.roundRect(x, y, badgeWidth, badgeHeight, radius);
-          ctx.fill();
-          ctx.stroke();
-
-          // 4. Draw Red Glowing Dot / Emblem
-          const dotRadius = Math.round(7 * scale);
-          const dotX = x + Math.round(20 * scale);
-          const dotY = y + badgeHeight / 2;
-
-          ctx.beginPath();
-          ctx.arc(dotX, dotY, dotRadius, 0, Math.PI * 2);
-          ctx.fillStyle = '#dc2626'; // Red-600
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.arc(dotX, dotY, dotRadius + Math.round(3 * scale), 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
-          ctx.lineWidth = Math.max(1, Math.round(1.5 * scale));
-          ctx.stroke();
-
-          // 5. Draw Primary Brand Name (Hindi: सीमांचल एक्सप्रेस)
-          const textStartX = dotX + Math.round(16 * scale);
-          const fontSizeHindi = Math.round(17 * scale);
-          ctx.font = `bold ${fontSizeHindi}px "Noto Sans Devanagari", "Segoe UI", Arial, sans-serif`;
-          ctx.fillStyle = '#ffffff';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('सीमांचल एक्सप्रेस', textStartX, y + Math.round(23 * scale));
-
-          // 6. Draw Subtitle (English: SEEMANCHAL EXPRESS • VERIFIED)
-          const fontSizeEn = Math.round(9 * scale);
-          ctx.font = `bold ${fontSizeEn}px "Segoe UI", Roboto, sans-serif`;
-          ctx.fillStyle = '#f87171'; // red-400
-          ctx.letterSpacing = '1px';
-          ctx.fillText('SEEMANCHAL EXPRESS • NEWS', textStartX, y + Math.round(44 * scale));
-
+          ctx.drawImage(logoImg, x, y, targetWidth, targetHeight);
           ctx.restore();
 
-          // 7. Export watermarked canvas to File
+          // 4. Export watermarked canvas to File
           canvas.toBlob(
             (blob) => {
               if (!blob) {
@@ -101,7 +123,7 @@ export async function applyWatermarkToImage(file) {
           );
         } catch (err) {
           console.error('Failed to apply watermark to canvas:', err);
-          resolve(file); // fallback safely to original file
+          resolve(file);
         }
       };
 
@@ -115,22 +137,35 @@ export async function applyWatermarkToImage(file) {
 }
 
 /**
- * Watermark Badge Component for Video Overlay
+ * Watermark Badge Component for Video Overlay (Positioned at TOP RIGHT, Pure Image Only - NO background, NO text)
  */
-export function VideoWatermarkBadge({ className = '' }) {
+export function VideoWatermarkBadge({ className = '', watermarkLogo = '' }) {
+  const [logoUrl, setLogoUrl] = useState(watermarkLogo ? getMediaUrl(watermarkLogo) : '');
+
+  useEffect(() => {
+    if (watermarkLogo) {
+      setLogoUrl(getMediaUrl(watermarkLogo));
+      return;
+    }
+    getWatermarkUrl().then((url) => {
+      if (url) setLogoUrl(getMediaUrl(url));
+    });
+  }, [watermarkLogo]);
+
+  if (!logoUrl) return null;
+
   return (
     <div
-      className={`absolute bottom-3 right-3 z-20 pointer-events-none select-none flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950/85 backdrop-blur-md border border-red-500/60 shadow-2xl text-white ${className}`}
+      className={`absolute top-3 right-3 z-20 pointer-events-none select-none ${className}`}
     >
-      <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse shrink-0 ring-2 ring-red-500/40" />
-      <div className="flex flex-col text-left leading-tight">
-        <span className="font-black text-xs text-white tracking-wide">
-          सीमांचल एक्सप्रेस
-        </span>
-        <span className="text-[9px] font-bold tracking-wider text-red-400 uppercase">
-          SEEMANCHAL EXPRESS
-        </span>
-      </div>
+      <img
+        src={logoUrl}
+        alt="Watermark"
+        className="h-8 sm:h-10 md:h-12 w-auto object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] filter"
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+        }}
+      />
     </div>
   );
 }

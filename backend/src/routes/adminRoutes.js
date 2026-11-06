@@ -229,6 +229,12 @@ router.post('/applications/:id/approve', async (req, res) => {
     const appointmentRef = `SE/APPT/${year}/${seq}`;
 
     user.status = 'approved';
+    if (user.role === 'reporter') {
+      user.reporterStatus = 'active';
+    } else if (user.role === 'member') {
+      user.membershipStatus = 'active';
+      user.membershipStartDate = user.membershipStartDate || new Date();
+    }
     user.assignedDesignation = assignedDesignation;
     
     // Validate and sanitize committeeLevel safely
@@ -284,6 +290,11 @@ router.post('/applications/:id/reject', async (req, res) => {
     }
 
     user.status = 'rejected';
+    if (user.role === 'reporter') {
+      user.reporterStatus = 'rejected';
+    } else if (user.role === 'member') {
+      user.membershipStatus = 'rejected';
+    }
     user.rejectionReason = reason || 'Your application did not meet our current requirements.';
     user.showOnTeamPage = false;
     await user.save();
@@ -341,6 +352,46 @@ router.put('/users/:id', async (req, res) => {
 
     await user.save();
     res.json({ success: true, message: 'User updated successfully', user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   PUT /api/admin/users/:id/office-assignment
+// @desc    Update office assignment for a user / member
+router.put('/users/:id/office-assignment', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const { committeeLevel, assignedDesignation, assignedLocation, showOnTeamPage } = req.body;
+    if (committeeLevel !== undefined) user.committeeLevel = committeeLevel;
+    if (assignedDesignation !== undefined) user.assignedDesignation = assignedDesignation;
+    if (assignedLocation !== undefined) user.assignedLocation = assignedLocation;
+    if (showOnTeamPage !== undefined) user.showOnTeamPage = showOnTeamPage;
+
+    await user.save();
+    res.json({ success: true, message: 'Office assignment updated successfully', user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   PUT /api/admin/users/:id/team-page-visibility
+// @desc    Toggle team page visibility
+router.put('/users/:id/team-page-visibility', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    if (req.body.showOnTeamPage !== undefined) {
+      user.showOnTeamPage = req.body.showOnTeamPage;
+    } else {
+      user.showOnTeamPage = !user.showOnTeamPage;
+    }
+
+    await user.save();
+    res.json({ success: true, message: 'Team page visibility updated', user });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -418,6 +469,70 @@ router.put('/news/:id/status', async (req, res) => {
       .populate('author', 'name email phone role photo assignedDesignation assignedLocation committeeLevel bio idCardNumber');
 
     res.json({ success: true, message: `News status changed to ${status}`, news: updatedNews });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   PUT /api/admin/news/:id/breaking
+// @desc    Toggle breaking news
+router.put('/news/:id/breaking', async (req, res) => {
+  try {
+    const news = await News.findById(req.params.id);
+    if (!news) return res.status(404).json({ success: false, message: 'News not found' });
+    news.isBreaking = req.body.isBreaking !== undefined ? Boolean(req.body.isBreaking) : !news.isBreaking;
+    await news.save();
+    try {
+      await news.populate('author', 'name email phone avatar assignedDesignation');
+    } catch (_) {}
+    res.json({ success: true, message: 'Breaking status updated', news });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   PUT /api/admin/news/:id/featured
+// @desc    Toggle featured news
+router.put('/news/:id/featured', async (req, res) => {
+  try {
+    const news = await News.findById(req.params.id);
+    if (!news) return res.status(404).json({ success: false, message: 'News not found' });
+    news.isFeatured = req.body.isFeatured !== undefined ? Boolean(req.body.isFeatured) : !news.isFeatured;
+    await news.save();
+    try {
+      await news.populate('author', 'name email phone avatar assignedDesignation');
+    } catch (_) {}
+    res.json({ success: true, message: 'Featured status updated', news });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   PUT /api/admin/news/:id/trending
+// @desc    Toggle trending news
+router.put('/news/:id/trending', async (req, res) => {
+  try {
+    const news = await News.findById(req.params.id);
+    if (!news) return res.status(404).json({ success: false, message: 'News not found' });
+    news.isTrending = req.body.isTrending !== undefined ? Boolean(req.body.isTrending) : !news.isTrending;
+    await news.save();
+    try {
+      await news.populate('author', 'name email phone avatar assignedDesignation');
+    } catch (_) {}
+    res.json({ success: true, message: 'Trending status updated', news });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// @route   DELETE /api/admin/news/:id
+// @desc    Delete news from admin
+router.delete('/news/:id', async (req, res) => {
+  try {
+    const news = await News.findById(req.params.id);
+    if (!news) return res.status(404).json({ success: false, message: 'News not found' });
+    await news.deleteOne();
+    res.json({ success: true, message: 'News article deleted successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

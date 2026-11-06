@@ -1,32 +1,45 @@
 /**
  * Resolves media/image URLs whether they are relative uploads, public assets, or remote URLs.
  */
-export function getMediaUrl(url, fallback = '/default-avatar.svg') {
-  if (!url || url === '/uploads/default-avatar.png' || url === 'default-avatar.png' || url === '/default-avatar.png') {
+export function getMediaUrl(url, fallback = '/logo.jpeg') {
+  if (!url || typeof url !== 'string') {
     return fallback;
+  }
+
+  const cleanUrl = url.trim();
+  if (!cleanUrl) return fallback;
+
+  if (cleanUrl.includes('default-avatar')) {
+    return '/default-avatar.svg';
+  }
+
+  if (cleanUrl.includes('default-news')) {
+    return '/logo.jpeg';
   }
   
   // If it's already an absolute URL or a Base64 data URL
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
-    return url;
+  if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://') || cleanUrl.startsWith('data:') || cleanUrl.startsWith('blob:')) {
+    return cleanUrl;
   }
 
-  // Next.js public static files (like /logo.jpeg)
-  if (url.startsWith('/logo') || url.startsWith('/favicon')) {
-    return url;
+  // Next.js public static files (like /logo.jpeg or /default-avatar.svg)
+  if (cleanUrl.startsWith('/logo') || cleanUrl.startsWith('/favicon') || cleanUrl.startsWith('/default-avatar')) {
+    return cleanUrl;
   }
 
   // Backend uploads (e.g. /uploads/filename.png)
-  const backendBase = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5005';
-  if (url.startsWith('/uploads')) {
-    return `${backendBase}${url}`;
+  const rawApiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005/api').trim();
+  const backendBase = rawApiUrl.replace(/\/api\/?$/, '');
+
+  if (cleanUrl.startsWith('/uploads')) {
+    return `${backendBase}${cleanUrl}`;
   }
 
-  if (url.startsWith('/')) {
-    return `${backendBase}${url}`;
+  if (cleanUrl.startsWith('/')) {
+    return `${backendBase}${cleanUrl}`;
   }
 
-  return `${backendBase}/${url}`;
+  return `${backendBase}/${cleanUrl}`;
 }
 
 export default getMediaUrl;
